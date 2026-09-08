@@ -44,3 +44,7 @@ pyrightconfig.json
 .claude/scheduled_tasks.lock
 .claude/agents
 .claude/commands
+
+# TRC local scratch
+wandb/
+_inspect/
