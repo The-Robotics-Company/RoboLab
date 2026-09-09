@@ -10,9 +10,22 @@ All references are relative (`../assets/...`), so keep this folder at the repo r
 | `piperx_rubiks_cube_bowl.usda` | Piper-X (`assets/robots/piper_x/`), home pose | trc-spaces DC1 wrist + exo, 624x352 |
 | `droid_rubiks_cube_bowl.usda` | Franka + Robotiq 2F-85 (stock RoboLab), DROID init pose | DROID wrist + over-shoulder-left 1280x720, egocentric viewport 864x480 |
 
-Both use the same rig: `assets/backgrounds/default/home_office.exr` as a DomeLight (intensity 500, visible to the
-camera) as the only light, a visual-only GroundPlane at z = -0.697, and three colleague render presets
-(`his_angled`, `his_front`, `his_top`; look-at definitions in `colleague_camera_presets.json`).
+## Rig: one USD for the look, shared by previews and rollouts
+
+`rigs/home_office.usda` holds everything about appearance that is not a task object: RoboLab's
+`assets/backgrounds/default/home_office.exr` as a DomeLight (intensity 500, visible to the camera, the only light) and a
+visual-only GroundPlane at z = -0.697. Both stages reference it, and `robolab/registrations/rig.py::rig_cfg("home_office")`
+spawns the same file once at `/World/rig` in every registered env, so a rollout is lit by the identical prims. It is the
+default for both robots in `policies/pi0_family/run_rollout.py` (`--rig home_office`; `--rig <other>.usda` for another
+look, `--rig stock` for RoboLab's own per-robot lighting/background cfgs).
+
+Why not put it in the scene USD: RoboLab scrapes scene USDs into per-object asset cfgs (lights are dropped) and clones
+the scene per env, so a dome inside the scene would be lost or stacked N times. Global prims must be spawned once at
+/World, which is what the rig cfg does. The ground height is authored for the RoboLab table scenes (z = -0.697); a scene
+with a different ground needs its own rig file.
+
+Both stages also carry three colleague render presets (`his_angled`, `his_front`, `his_top`; look-at definitions in
+`colleague_camera_presets.json`).
 
 ## Tools (run with `OMNI_KIT_ACCEPT_EULA=YES /opt/IsaacSim/python.sh <tool>`)
 
