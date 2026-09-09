@@ -59,11 +59,24 @@ Object xforms must be standard `translate` / `orient` / `scale` ops: RoboLab rej
 `xformOp:transform` matrix ("not a xformable prim with standard transform operations"). The conversion script decomposes
 the reconstruction's matrices (uniform scale, no shear) into those ops; world placement is unchanged.
 
-Verified 2026-09-09: `run_rollout.py --robot droid --task RubiksCubeTask --scene-variant v0 --rig home_office_floor945`,
+Verified 2026-09-09: `run_rollout.py --robot droid --task RubiksCubeTask --scene-variant v0`,
 pi05_droid_jointpos, 10 episodes: 10/10 successes (7-16 s), videos on W&B piperx-robolab/biwoi7hu. Caveat on the success
 predicate: the reconstructed bowl's local frame is tilted 112 deg from world up, so RoboLab's open-top containment box is
 rotated with it (still correct for objects resting in the bowl, but the tipped-container check is meaningless and recorded
 object poses are in these tilted frames). Upright, identity-aligned local frames at export would fix that.
+
+DROID pi05_droid_jointpos rollouts, 10 episodes each (W&B project piperx-robolab):
+
+| task | GT scene | v0 scene | 120-task benchmark |
+|---|---|---|---|
+| RubiksCubeTask | 10/10 (`rldqbs3k`) | 10/10 (`biwoi7hu`) | 10/10 |
+| PickDrillTask | 0/10 (`xl7768vy`) | 0/10 (`7y9zdpyo`) | 0/10 (one of pi05's 46 zero-success tasks) |
+
+So both reconstructions reproduce the GT score for this policy. PickDrill episodes always run the full 40 s, about 6 min
+per batch of 5 envs at 1.65 it/s; RubiksCube episodes end on success after 7-16 s.
+
+Note: with `--scene-variant v0` only tasks that have a `_v0` scene can be registered, since the scene lookup is patched
+globally.
 
 Why not put it in the scene USD: RoboLab scrapes scene USDs into per-object asset cfgs (lights are dropped) and clones
 the scene per env, so a dome inside the scene would be lost or stacked N times. Global prims must be spawned once at
