@@ -76,9 +76,9 @@ parser.add_argument("--enable-verbose", "--enable_verbose", action="store_true")
 parser.add_argument("--enable-debug", "--enable_debug", action="store_true")
 parser.add_argument("--record-image-data", "--record_image_data", action="store_true",
                     help="Also record camera images into the HDF5 (default: proprio only).")
-parser.add_argument("--background", type=str, default="none",
-                    help="piperx only: none (default; untextured dome from the render_utils lighting preset) or a RoboLab "
-                         "HDR background: home_office, empty_warehouse, billiard_hall, brown_photostudio.")
+parser.add_argument("--background", type=str, default="home_office",
+                    help="piperx only: RoboLab HDR background used as dome light + backdrop (default home_office, the "
+                         "data-generation look): home_office, empty_warehouse, billiard_hall, brown_photostudio, or none.")
 parser.add_argument("--droid-compat", "--droid_compat", action="store_true",
                     help="piperx only: drive the 6-joint Piper-X with a DROID-trained (7-joint, 8-dim) checkpoint by "
                          "padding the joint state and dropping the 7th joint action. Auto-enabled when --policy-config "

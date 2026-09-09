@@ -2,11 +2,13 @@
 
 """Lighting presets for the PiPER-X registrations.
 
-``PiperXRenderLightingCfg`` reproduces the lights RoboLab's own render utility adds when it renders scene
-previews (``robolab/core/utils/render_utils.py::render_stage_frame`` with ``add_lighting=True`` and no
-background texture): a 7250 K distant light at exposure 10 and an untextured 6150 K dome at exposure 9.
-The untextured dome is also what the cameras see behind the scene, i.e. a plain light-grey ground instead
-of an HDR room. Used as the default so Piper-X rollouts match the colleague's data-generation renders.
+The Piper-X data-generation look (colleague's render pipeline, RoboLab ``render_utils`` with a background texture)
+is: an HDR dome as the only light and as the background, plus the scene's floor made visible. In RoboLab envs the
+HDR dome comes from ``robolab.variations.backgrounds`` (``HomeOfficeBackgroundCfg`` etc., spawned once at
+``/World/background``), which ``run_rollout.py --background`` selects (default ``home_office``). This preset only
+adds what RoboLab envs lack: a visible floor. Task scenes carry an invisible collision-only GroundPlane at
+z = -0.697, so a matte grey visual-only slab is spawned once at /World with its top face at that height.
+No lights are added here: with an HDR background the dome is the light, as in the data-generation renders.
 """
 
 import isaaclab.sim as sim_utils
@@ -16,44 +18,15 @@ from isaaclab.utils import configclass
 
 @configclass
 class PiperXRenderLightingCfg:
-    """render_utils.render_stage_frame lighting: distant key + untextured dome, no background texture."""
+    """Visible floor only (lighting comes from the HDR background cfg)."""
 
-    # Distant and dome lights illuminate the whole stage regardless of where their prim lives, so they must be
-    # spawned ONCE at /World, not per env: under {ENV_REGEX_NS} every parallel env adds another copy and the
-    # exposure scales with --num-envs (5 envs rendered ~5x too bright, floor and dome blown to white).
-    distant_light = AssetBaseCfg(
-        prim_path="/World/distant_light",
-        spawn=sim_utils.DistantLightCfg(
-            color=(1.0, 1.0, 1.0),
-            enable_color_temperature=True,
-            color_temperature=7250.0,
-            intensity=1.0,
-            exposure=10.0,
-            angle=30.0,
-        ),
-    )
-    dome_light = AssetBaseCfg(
-        prim_path="/World/dome_light",
-        spawn=sim_utils.DomeLightCfg(
-            color=(1.0, 1.0, 1.0),
-            enable_color_temperature=True,
-            color_temperature=6150.0,
-            intensity=1.0,
-            exposure=9.0,
-            texture_file=None,
-            texture_format="latlong",
-        ),
-    )
-    # Ground: equivalent of render_utils add_ground=True = isaacsim GroundPlane: 100 x 100 m plane with a
-    # UsdPreviewSurface of diffuseColor 0.5 and default roughness 0.5 / metallic 0 (the glossy, reflective look).
-    # RoboLab task scenes carry only an invisible collision ground at z = -0.697, so this is a visual-only slab
-    # whose top face sits exactly there; the scene's own ground plane keeps doing the physics. One slab at /World
-    # covers every env (env origins share z = 0; only x/y differ).
-    ground_plane = AssetBaseCfg(
-        prim_path="/World/GroundPlane",
+    # Matches the look of the scene-authored GroundPlane mesh (plain grey, no material) that the data-generation
+    # renders force visible. 100 x 100 m so it covers every parallel env; visual only, no collider.
+    floor = AssetBaseCfg(
+        prim_path="/World/floor",
         spawn=sim_utils.CuboidCfg(
             size=(100.0, 100.0, 0.01),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.5), roughness=0.5, metallic=0.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.5), roughness=0.9, metallic=0.0),
             collision_props=None,
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, -0.702)),

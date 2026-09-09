@@ -40,8 +40,8 @@ def resolve_background(name: str):
     return getattr(bg, cls)
 
 
-def _register(action_cfg, env_postfix, task_dirs, task, camera_cfg=None, lighting_cfg=_DEFAULT, background_cfg=None):
-    """Default look = colleague's render_utils settings: PiperXRenderLightingCfg, no HDR background."""
+def _register(action_cfg, env_postfix, task_dirs, task, camera_cfg=None, lighting_cfg=_DEFAULT, background_cfg=_DEFAULT):
+    """Default look = data-generation renders: home_office HDR dome (RoboLab HomeOfficeBackgroundCfg) + visible floor."""
     from robolab.core.environments.factory import auto_discover_and_create_cfgs
     from robolab.core.observations.observation_utils import generate_image_obs_from_cameras, generate_obs_cfg
     from robolab.registrations.piperx.camera_presets import PiperXExoCameraCfg
@@ -51,6 +51,8 @@ def _register(action_cfg, env_postfix, task_dirs, task, camera_cfg=None, lightin
 
     if lighting_cfg is _DEFAULT:
         lighting_cfg = PiperXRenderLightingCfg
+    if background_cfg is _DEFAULT:
+        background_cfg = resolve_background("home_office")
     camera_cfg = camera_cfg or [PiperXExoCameraCfg, EgocentricMirroredWideAngleHighCameraCfg]
     ViewportCameraCfg = generate_image_obs_from_cameras([EgocentricMirroredWideAngleHighCameraCfg])
     # Policy images: exo + wrist. The wrist camera is spawned through PiperXCfg; its wrapper here only names the obs.
