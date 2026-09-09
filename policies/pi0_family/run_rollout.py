@@ -222,11 +222,11 @@ def install_scene_variant(variant: str) -> None:
 def register_robot_envs(args: argparse.Namespace) -> None:
     """Register the selected robot's envs for the selected tasks (call after AppLauncher, before run_evaluation)."""
     from robolab.registrations.piperx.auto_env_registrations_jointpos import resolve_background
-    from robolab.registrations.rig import rig_cfg
+    from robolab.registrations.rig import rig_cfg, rig_usd_path
 
     rig = rig_cfg(args.rig)   # None for --rig stock
     if rig is not None:
-        print(f"[RoboLab] scene rig: {rig.rig_usd_path} (spawned once at /World/rig)")
+        print(f"[RoboLab] scene rig: {rig_usd_path(rig)} (spawned once at /World/rig)")
     if args.robot == "piperx":
         from robolab.registrations.piperx.auto_env_registrations_jointpos import (
             auto_register_piperx_delta_envs,

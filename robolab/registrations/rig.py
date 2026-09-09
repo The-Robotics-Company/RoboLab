@@ -63,5 +63,15 @@ def rig_cfg(name_or_path: str | None = DEFAULT_RIG):
         )
 
     RigCfg.__name__ = RigCfg.__qualname__ = f"Rig_{rig_name}_Cfg"
-    RigCfg.rig_usd_path = usd_path
+    # Do NOT hang extra attributes on the class: configclass copies class attributes onto the scene cfg instance and
+    # InteractiveScene rejects members that are not asset cfgs ("Unknown asset config type for ...").
+    _RIG_PATHS[RigCfg] = usd_path
     return RigCfg
+
+
+_RIG_PATHS: dict[type, str] = {}
+
+
+def rig_usd_path(cfg_cls) -> str | None:
+    """The USD file a cfg returned by :func:`rig_cfg` spawns."""
+    return _RIG_PATHS.get(cfg_cls)
