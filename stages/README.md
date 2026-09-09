@@ -47,6 +47,7 @@ Both stages also carry three colleague render presets (`his_angled`, `his_front`
 |---|---|
 | `render_cams.py <stage> <out_dir> --cam <prim> ... [--res WxH] [--closeup <prim>] [--no-lights]` | headless render from named camera prims plus auto overview views, after settling physics |
 | `render_views.py <stage> <out_dir> <views.json> [--res 640x480 --focal 24 --haperture 20.955]` | headless render from look-at views with given intrinsics |
+| `overview_views.json` | fixed overview poses (angled / robot side / top, aimed at the GT stage's content centre) so different stages render from identical cameras: `render_views.py <stage> <out> overview_views.json --res 1280x720` |
 | `pack_stage.py <stage> <repo_root> <out_dir>` | self-contained bundle of a stage and every dependency (for S3) |
 | `open_scene.py` | Isaac Sim GUI startup script: `ROBOLAB_SCENE=<stage> isaac-sim.sh --no-ros-env --exec open_scene.py` |
 | `stl_to_usd.py` | mm STL -> metre USD mesh (used for the Piper-X wrist-cam mount) |
