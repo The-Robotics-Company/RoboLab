@@ -30,8 +30,10 @@ essential assets (table as kinematic rigid body, bowl and rubiks_cube as dynamic
 expects, plus an invisible collider ground). Room, lights, PhysicsScene and room materials were stripped; light, backdrop
 and visible ground are added in one step by the rig. Conversion script: `stages/convert_v0_scene.py` (Sdf.CopySpec of the
 object prims, references retargeted to `./meshes/`). Rollout: `run_rollout.py --robot droid --task RubiksCubeTask
---scene-variant v0 --rig home_office_floor945`. Note the delivered object scale (cube 14 cm, bowl 17 cm tall) is larger
-than the real objects; the Robotiq 2F-85 cannot grasp the cube as delivered.
+--scene-variant v0 --rig home_office_floor945`. Do not size these objects from a world-space bounding box: the meshes' local frames are rotated relative to the world
+and their local boxes are not tight, so `BBoxCache` reports the box of a rotated box (cube 14.5 cm, bowl 18 cm). Measured
+from the vertices the cube is ~6-7.6 cm across (GT 5.8 cm) and the bowl 13.6 cm wide, ~9 cm tall (GT 16.1 x 5.5 cm), i.e.
+close to the real objects. The mesh files had no authored `extent`; one was added (computed from the vertices).
 
 Why not put it in the scene USD: RoboLab scrapes scene USDs into per-object asset cfgs (lights are dropped) and clones
 the scene per env, so a dome inside the scene would be lost or stacked N times. Global prims must be spawned once at
