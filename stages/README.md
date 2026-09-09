@@ -36,6 +36,13 @@ and their local boxes are not tight, so `BBoxCache` reports the box of a rotated
 from the vertices the cube is ~6-7.6 cm across (GT 5.8 cm) and the bowl 13.6 cm wide, ~9 cm tall (GT 16.1 x 5.5 cm), i.e.
 close to the real objects. The mesh files had no authored `extent`; one was added (computed from the vertices).
 
+Colliders stay derived from the visual meshes (convex decomposition), tuned in the scene layer to follow the mesh
+faithfully: table and bowl use `maxConvexHulls` 128, `voxelResolution` 4e6, `errorPercentage` 1.0 / 0.5, `shrinkWrap` on
+(PhysX defaults: 32 hulls, 5e5 voxels, 10 %). The reconstructed tabletop itself is wavy (13 mm std, ~4 cm peak to peak,
+29 mm/m tilt) and the collider reproduces that by design. Measured effect vs the delivered defaults: objects rest 12-16 mm
+lower (the default hulls bulged above the visual surface, so objects floated); a cube dropped into the bowl lands inside
+the cavity with both settings. Check script: `stages/physics_check.py <stage.usda>` (settle 3 s, drop cube into bowl 4 s).
+
 Why not put it in the scene USD: RoboLab scrapes scene USDs into per-object asset cfgs (lights are dropped) and clones
 the scene per env, so a dome inside the scene would be lost or stacked N times. Global prims must be spawned once at
 /World, which is what the rig cfg does. The ground height is authored for the RoboLab table scenes (z = -0.697); a scene
