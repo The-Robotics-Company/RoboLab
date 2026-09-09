@@ -9,7 +9,9 @@ All references are relative (`../assets/...`), so keep this folder at the repo r
 |---|---|---|
 | `piperx_rubiks_cube_bowl.usda` | Piper-X (`assets/robots/piper_x/`), home pose | trc-spaces DC1 wrist + exo, 624x352 |
 | `droid_rubiks_cube_bowl.usda` | Franka + Robotiq 2F-85 (stock RoboLab), DROID init pose | DROID wrist + over-shoulder-left 1280x720, egocentric viewport 864x480 |
-| `droid_rubiks_cube_bowl_v0.usda` | same DROID robot on the franka_table, on the bare video-reconstructed `assets/scenes/rubiks_cube_bowl_v0/` scene; rig `home_office_floor945` | same DROID cameras |
+| `droid_rubiks_cube_bowl_v0.usda` | same DROID robot on the franka_table, on the bare video-reconstructed `assets/scenes/rubiks_cube_bowl_v0/` scene | same DROID cameras |
+| `droid_mugs4_measuringcup_drill_bowl.usda` | DROID robot on the RoboLab PickDrill scene (drill, 4 mugs, bowl, measuring cup) | same DROID cameras |
+| `droid_mugs4_measuringcup_drill_bowl_v0.usda` | DROID robot on the bare video-reconstructed `assets/scenes/mugs4_measuringcup_drill_bowl_v0/` scene | same DROID cameras |
 
 ## Rig: one USD for the look, shared by previews and rollouts
 
@@ -20,10 +22,20 @@ spawns the same file once at `/World/rig` in every registered env, so a rollout 
 default for both robots in `policies/pi0_family/run_rollout.py` (`--rig home_office`; `--rig <other>.usda` for another
 look, `--rig stock` for RoboLab's own per-robot lighting/background cfgs).
 
-`rigs/home_office_floor945.usda` is the same rig with the ground at z = -0.945, the floor height of the video-reconstructed
-scenes (`rubiks_cube_bowl_v0`). Pick the rig whose ground matches the scene's collider ground.
+The ground plane is authored at the rig's own origin, so ONE rig file serves every scene: the stage (or `rig_cfg`)
+places the rig prim at that scene's ground height. Heights in use: `rubiks_cube_bowl` -0.697, `mugs4_measuringcup_drill_bowl`
+-0.650, `rubiks_cube_bowl_v0` -0.945, `mugs4_measuringcup_drill_bowl_v0` -0.8184. The dome is infinite, so moving the rig
+moves only the ground. `run_rollout.py --rig-ground auto` (the default) reads the height off the task scene's own
+`/GroundPlane`, so a rollout's visible ground always sits on the scene's collider ground.
 
 ## v0 scenes (video reconstructions)
+
+Converted with `stages/convert_v0_scene.py <src_dir> <out_name> obj_000000=<name> ...` (the delivered USD does not label
+its objects; identify them from `scene_info.txt` masses/static flags, the albedo textures and, when the delivery is in the
+GT frame, object positions). Two are in the repo: `rubiks_cube_bowl_v0` (3 objects) and `mugs4_measuringcup_drill_bowl_v0`
+(8 objects, PickDrillTask). The script renames the prims, drops room/lights/PhysicsScene, authors the franka_table mount
+and a collider ground at the room floor, re-authors xforms as translate/orient/scale, tunes the convex decomposition and
+authors mesh extents.
 
 `assets/scenes/rubiks_cube_bowl_v0/rubiks_cube_bowl_v0.usda` is the bare form of a video-reconstructed scene: only the
 essential assets (table as kinematic rigid body, bowl and rubiks_cube as dynamic rigid bodies, named as RubiksCubeTask
@@ -67,6 +79,7 @@ Both stages also carry three colleague render presets (`his_angled`, `his_front`
 |---|---|
 | `render_cams.py <stage> <out_dir> --cam <prim> ... [--res WxH] [--closeup <prim>] [--no-lights]` | headless render from named camera prims plus auto overview views, after settling physics |
 | `render_views.py <stage> <out_dir> <views.json> [--res 640x480 --focal 24 --haperture 20.955]` | headless render from look-at views with given intrinsics |
+| `overview_views_drill.json` | the same for the PickDrill scene pair (their content bbox differs) |
 | `overview_views.json` | fixed overview poses (angled / robot side / top, aimed at the GT stage's content centre) so different stages render from identical cameras: `render_views.py <stage> <out> overview_views.json --res 1280x720` |
 | `pack_stage.py <stage> <repo_root> <out_dir>` | self-contained bundle of a stage and every dependency (for S3) |
 | `open_scene.py` | Isaac Sim GUI startup script: `ROBOLAB_SCENE=<stage> isaac-sim.sh --no-ros-env --exec open_scene.py` |

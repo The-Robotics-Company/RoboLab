@@ -21,6 +21,7 @@ Same evaluation loop as ``run.py`` (robolab.eval.runner.run_evaluation): HDF5 + 
                           and the visible ground, from stages/rigs/<NAME>.usda (default home_office, the same
                           file the inspection stages reference). stock: RoboLab's per-robot lighting/background
                           cfgs instead (droid: SphereLight + --background HDR).
+  --rig-ground auto|Z     where the rig's visible ground sits: auto (default) = the task scene's own /GroundPlane z.
 
 Examples:
   .venv/bin/python policies/pi0_family/run_rollout.py --headless --robot piperx --task RubiksCubeTask \
@@ -87,6 +88,9 @@ parser.add_argument("--rig", type=str, default="home_office",
 parser.add_argument("--background", type=str, default="home_office",
                     help="--rig stock only: RoboLab HDR background cfg: home_office, empty_warehouse, billiard_hall, "
                          "brown_photostudio, or none.")
+parser.add_argument("--rig-ground", "--rig_ground", type=str, default="auto",
+                    help="Height of the rig's visible ground plane: 'auto' (default) reads the task scene's authored "
+                         "/GroundPlane z, so the visible ground sits on the scene's collider ground; or give a z in metres.")
 parser.add_argument("--droid-compat", "--droid_compat", action="store_true",
                     help="piperx only: drive the 6-joint Piper-X with a DROID-trained (7-joint, 8-dim) checkpoint by "
                          "padding the joint state and dropping the 7th joint action. Auto-enabled when --policy-config "
@@ -218,15 +222,47 @@ def install_scene_variant(variant: str) -> None:
     scene_utils.find_scene_file = find_scene_file_v0
 
 
+# ----------------------------------------------------------------------------- rig ground height
+def resolve_rig_ground(args: argparse.Namespace) -> float:
+    """--rig-ground: an explicit z, or 'auto' = the selected task's scene ground (its authored /GroundPlane)."""
+    import json
+
+    from robolab.constants import SCENE_DIR, TASK_DIR
+    from robolab.core.scenes import utils as scene_utils
+    from robolab.registrations.rig import DEFAULT_GROUND_Z, scene_ground_z
+
+    if args.rig_ground.lower() != "auto":
+        return float(args.rig_ground)
+    grounds = []
+    try:
+        meta = json.load(open(os.path.join(TASK_DIR, "_metadata", "task_metadata.json")))
+        entries = meta if isinstance(meta, list) else meta.get("tasks", [])
+        by_name = {e["task_name"]: e.get("scene") for e in entries if isinstance(e, dict) and "task_name" in e}
+        for task in args.task or []:
+            scene = by_name.get(task)
+            if scene:
+                grounds.append(round(scene_ground_z(scene_utils.find_scene_file(scene, SCENE_DIR)), 6))
+    except Exception as exc:  # noqa: BLE001
+        print(f"\033[93m[RoboLab] --rig-ground auto failed ({exc}); using {DEFAULT_GROUND_Z}.\033[0m")
+    if not grounds:
+        print(f"\033[93m[RoboLab] --rig-ground auto: no task scene ground found; using {DEFAULT_GROUND_Z}.\033[0m")
+        return DEFAULT_GROUND_Z
+    if len(set(grounds)) > 1:
+        print(f"\033[93m[RoboLab] --rig-ground auto: tasks disagree on ground height {sorted(set(grounds))}; using "
+              f"{grounds[0]}. Pass --rig-ground explicitly or run one task per job.\033[0m")
+    return grounds[0]
+
+
 # ----------------------------------------------------------------------------- robot selection
 def register_robot_envs(args: argparse.Namespace) -> None:
     """Register the selected robot's envs for the selected tasks (call after AppLauncher, before run_evaluation)."""
     from robolab.registrations.piperx.auto_env_registrations_jointpos import resolve_background
-    from robolab.registrations.rig import rig_cfg, rig_usd_path
+    from robolab.registrations.rig import rig_cfg, rig_ground_z, rig_usd_path
 
-    rig = rig_cfg(args.rig)   # None for --rig stock
+    stock_rig = (not args.rig) or args.rig.lower() in ("stock", "none")
+    rig = None if stock_rig else rig_cfg(args.rig, ground_z=resolve_rig_ground(args))
     if rig is not None:
-        print(f"[RoboLab] scene rig: {rig_usd_path(rig)} (spawned once at /World/rig)")
+        print(f"[RoboLab] scene rig: {rig_usd_path(rig)} at ground z={rig_ground_z(rig):.4f} (spawned once at /World/rig)")
     if args.robot == "piperx":
         from robolab.registrations.piperx.auto_env_registrations_jointpos import (
             auto_register_piperx_delta_envs,
