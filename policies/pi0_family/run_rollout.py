@@ -17,6 +17,9 @@ Same evaluation loop as ``run.py`` (robolab.eval.runner.run_evaluation): HDF5 + 
   --policy-config NAME    openpi training-config name of the checkpoint (default for droid: pi05_droid_jointpos;
                           required for piperx when --checkpoint is given).
   --action-space abs|delta  piperx only: absolute joint targets or per-step deltas (droid is joint-position).
+  --lighting stage|stock  stage (default): HDR background as the only light + visible ground plane, for both
+                          robots, identical to the stages/*.usda previews. stock: RoboLab's per-robot default
+                          (droid adds the per-env SphereLight). --background picks the HDR (default home_office).
 
 Examples:
   .venv/bin/python policies/pi0_family/run_rollout.py --headless --robot piperx --task RubiksCubeTask \
@@ -55,8 +58,8 @@ parser.add_argument("--checkpoint", type=str, default=None,
 parser.add_argument("--policy-config", "--policy_config", type=str, default=None,
                     help="openpi config name the checkpoint was trained with "
                          "(default: pi05_droid_jointpos for --robot droid; required for piperx with --checkpoint).")
-parser.add_argument("--openpi-dir", "--openpi_dir", type=str, default=os.path.expanduser("~/git/openpi"),
-                    help="openpi checkout used to start the server (default: ~/git/openpi).")
+parser.add_argument("--openpi-dir", "--openpi_dir", type=str, default=os.path.expanduser("~/git/trc-policy-lab/openpi"),
+                    help="openpi checkout used to start the server (default: ~/git/trc-policy-lab/openpi).")
 parser.add_argument("--server-startup-timeout", type=float, default=1800.0,
                     help="Seconds to wait for the policy server port (default: 1800; big checkpoints load slowly).")
 parser.add_argument("--server-mem-fraction", type=str, default="0.5",
@@ -77,8 +80,13 @@ parser.add_argument("--enable-debug", "--enable_debug", action="store_true")
 parser.add_argument("--record-image-data", "--record_image_data", action="store_true",
                     help="Also record camera images into the HDF5 (default: proprio only).")
 parser.add_argument("--background", type=str, default="home_office",
-                    help="piperx only: RoboLab HDR background used as dome light + backdrop (default home_office, the "
-                         "data-generation look): home_office, empty_warehouse, billiard_hall, brown_photostudio, or none.")
+                    help="RoboLab HDR background used as dome light + backdrop for either robot (default home_office, "
+                         "the inspection-stage look): home_office, empty_warehouse, billiard_hall, brown_photostudio, or none.")
+parser.add_argument("--lighting", choices=["stage", "stock"], default="stage",
+                    help="stage (default): the shared inspection-stage rig, HDR background as the only light + visible "
+                         "ground plane (robolab.registrations.stage_lighting.StageLightingCfg), same for both robots and "
+                         "identical to the S3 preview renders. stock: each robot's RoboLab default (droid adds the "
+                         "per-env SphereLight 5000; piperx = stage).")
 parser.add_argument("--droid-compat", "--droid_compat", action="store_true",
                     help="piperx only: drive the 6-joint Piper-X with a DROID-trained (7-joint, 8-dim) checkpoint by "
                          "padding the joint state and dropping the 7th joint action. Auto-enabled when --policy-config "
@@ -220,15 +228,27 @@ def register_robot_envs(args: argparse.Namespace) -> None:
             resolve_background,
         )
         register = auto_register_piperx_envs if args.action_space == "abs" else auto_register_piperx_delta_envs
+        # piperx has no separate "stock" look: its RoboLab default already is the stage rig.
         register(task_dirs=args.task_dirs, task=args.task, background_cfg=resolve_background(args.background))
     else:
         from robolab.registrations.droid.auto_env_registrations_jointpos import auto_register_droid_envs
+        from robolab.registrations.piperx.auto_env_registrations_jointpos import resolve_background
 
+        if args.lighting == "stage":
+            from robolab.registrations.stage_lighting import StageLightingCfg
+            lighting_cfg = StageLightingCfg
+        else:
+            lighting_cfg = None  # RoboLab default: SphereLightCfg
+        if args.background == "none":
+            print("\033[93m[RoboLab] --background none is not supported for --robot droid (the registration falls back "
+                  "to home_office).\033[0m")
         auto_register_droid_envs(
             task_dirs=args.task_dirs,
             task=args.task,
             randomize_background=args.randomize_background,
             background_seed=args.background_seed,
+            lighting_cfg=lighting_cfg,
+            background_cfg=resolve_background(args.background),
         )
 
 
@@ -321,7 +341,9 @@ def main() -> None:
     # Output folder / env_cfg.policy label carries robot, action space, scene variant and checkpoint for provenance.
     ckpt_tag = os.path.basename(args_cli.checkpoint.rstrip("/")) if args_cli.checkpoint else "server"
     space = args_cli.action_space if args_cli.robot == "piperx" else "jointpos"
-    label = f"{args_cli.policy}_{args_cli.robot}_{space}_{args_cli.scene_variant}_{ckpt_tag}"
+    # Lighting is named only when it departs from the stage rig, so existing folder names stay stable.
+    light_tag = "" if args_cli.lighting == "stage" else f"_{args_cli.lighting}light"
+    label = f"{args_cli.policy}_{args_cli.robot}_{space}_{args_cli.scene_variant}{light_tag}_{ckpt_tag}"
     run_evaluation(args_cli, policy=label, client_factory=make_client)
     simulation_app.close()
 

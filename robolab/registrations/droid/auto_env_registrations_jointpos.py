@@ -28,12 +28,16 @@ The columns are:
 """
 def auto_register_droid_envs(task_dirs=DEFAULT_TASK_SUBFOLDERS, lighting_intensity=None, task=None, cameras=None,
                              randomize_background=False, background_seed=None, viewport_camera=None,
-                             lazy_sensor_update=True, object_state_obs=False):
+                             lazy_sensor_update=True, object_state_obs=False, lighting_cfg=None, background_cfg=None):
     """Automatically discover and register tasks.
 
     Args:
         task_dirs: Subdirectories to search for tasks.
         lighting_intensity: Optional lighting intensity override.
+        lighting_cfg: Optional lighting config class (default: SphereLightCfg, the stock DROID light). Pass
+              robolab.registrations.stage_lighting.StageLightingCfg for the HDR-only inspection-stage rig.
+        background_cfg: Optional background config class (default: HomeOfficeBackgroundCfg). Ignored when
+              randomize_background is True.
         task: If provided, only register the specified task(s) instead of discovering
               all tasks. Accepts a single task name/filename/path (str) or a list of them.
               Significantly faster when running a subset of tasks.
@@ -107,8 +111,10 @@ def auto_register_droid_envs(task_dirs=DEFAULT_TASK_SUBFOLDERS, lighting_intensi
             return generate_background_config(rng.choice(all_bgs))
 
         background_cfg = _bg_factory
-    else:
+    elif background_cfg is None:
         background_cfg = HomeOfficeBackgroundCfg
+    if lighting_cfg is None:
+        lighting_cfg = SphereLightCfg
 
     auto_discover_and_create_cfgs(
         task_dir=TASK_DIR,
@@ -121,7 +127,7 @@ def auto_register_droid_envs(task_dirs=DEFAULT_TASK_SUBFOLDERS, lighting_intensi
         actions_cfg=DroidJointPositionActionCfg(),
         robot_cfg=DroidCfg,
         camera_cfg=[*scene_cameras, viewport_camera],
-        lighting_cfg=SphereLightCfg,
+        lighting_cfg=lighting_cfg,
         background_cfg=background_cfg,
         contact_gripper=contact_gripper,
         lazy_sensor_update=lazy_sensor_update,
