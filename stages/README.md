@@ -9,7 +9,7 @@ All references are relative (`../assets/...`), so keep this folder at the repo r
 |---|---|---|
 | `piperx_rubiks_cube_bowl.usda` | Piper-X (`assets/robots/piper_x/`), home pose | trc-spaces DC1 wrist + exo, 624x352 |
 | `droid_rubiks_cube_bowl.usda` | Franka + Robotiq 2F-85 (stock RoboLab), DROID init pose | DROID wrist + over-shoulder-left 1280x720, egocentric viewport 864x480 |
-| `droid_rubiks_cube_bowl_v0.usda` | same DROID robot, no robot table, on the bare video-reconstructed `assets/scenes/rubiks_cube_bowl_v0/` scene; rig `home_office_floor945` | same DROID cameras |
+| `droid_rubiks_cube_bowl_v0.usda` | same DROID robot on the franka_table, on the bare video-reconstructed `assets/scenes/rubiks_cube_bowl_v0/` scene; rig `home_office_floor945` | same DROID cameras |
 
 ## Rig: one USD for the look, shared by previews and rollouts
 
@@ -27,7 +27,8 @@ scenes (`rubiks_cube_bowl_v0`). Pick the rig whose ground matches the scene's co
 
 `assets/scenes/rubiks_cube_bowl_v0/rubiks_cube_bowl_v0.usda` is the bare form of a video-reconstructed scene: only the
 essential assets (table as kinematic rigid body, bowl and rubiks_cube as dynamic rigid bodies, named as RubiksCubeTask
-expects, plus an invisible collider ground). Room, lights, PhysicsScene and room materials were stripped; light, backdrop
+expects, the franka_table robot mount as in every RoboLab scene, plus an invisible collider ground). The mount is 0.795 m
+tall while the video floor is at -0.945, so it hangs 15 cm above the visible ground; rollouts place it the same way. Room, lights, PhysicsScene and room materials were stripped; light, backdrop
 and visible ground are added in one step by the rig. Conversion script: `stages/convert_v0_scene.py` (Sdf.CopySpec of the
 object prims, references retargeted to `./meshes/`). Rollout: `run_rollout.py --robot droid --task RubiksCubeTask
 --scene-variant v0 --rig home_office_floor945`. Do not size these objects from a world-space bounding box: the meshes' local frames are rotated relative to the world
