@@ -1,5 +1,6 @@
 """Bare v0 scene from the video reconstruction: essential assets only (table, bowl, rubiks_cube + collider ground).
-Room, lights, PhysicsScene and room materials are dropped; look comes from a rig USD at rollout/inspection time."""
+Room, lights, PhysicsScene and room materials are dropped; look comes from a rig USD at rollout/inspection time.
+Object xforms are re-authored as translate/orient/scale (RoboLab rejects a bare xformOp:transform matrix)."""
 import os, shutil, sys
 sys.stdout.reconfigure(line_buffering=True)
 from isaacsim import SimulationApp
@@ -35,7 +36,15 @@ for old, new in RENAME.items():
     refs = prim.GetReferences(); refs.ClearReferences()
     refs.AddReference(f"./meshes/{old}.usd")
     prim.CreateAttribute("description", Sdf.ValueTypeNames.String).Set(new.replace("_", " "))
-    print(f"[v0] {old} -> /World/{new}")
+    # RoboLab requires standard translate / orient / scale ops; the reconstruction authors one xformOp:transform matrix.
+    x = UsdGeom.Xformable(prim); M = x.GetLocalTransformation(); t = Gf.Transform(M)
+    x.ClearXformOpOrder()
+    x.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(t.GetTranslation()))
+    q = t.GetRotation().GetQuat(); x.AddOrientOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Quatd(q.GetReal(), q.GetImaginary()))
+    x.AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(t.GetScale()))
+    if prim.HasProperty("xformOp:transform"):
+        prim.RemoveProperty("xformOp:transform")
+    print(f"[v0] {old} -> /World/{new}  (xform standardised: scale {[round(v, 4) for v in t.GetScale()]})")
 
 # RoboLab-style ground: invisible collider only (visual ground lives in the rig)
 gp = UsdGeom.Xform.Define(dst, "/World/GroundPlane")

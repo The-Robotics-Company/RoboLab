@@ -43,6 +43,16 @@ faithfully: table and bowl use `maxConvexHulls` 128, `voxelResolution` 4e6, `err
 lower (the default hulls bulged above the visual surface, so objects floated); a cube dropped into the bowl lands inside
 the cavity with both settings. Check script: `stages/physics_check.py <stage.usda>` (settle 3 s, drop cube into bowl 4 s).
 
+Object xforms must be standard `translate` / `orient` / `scale` ops: RoboLab rejects a prim carrying a bare
+`xformOp:transform` matrix ("not a xformable prim with standard transform operations"). The conversion script decomposes
+the reconstruction's matrices (uniform scale, no shear) into those ops; world placement is unchanged.
+
+Verified 2026-09-09: `run_rollout.py --robot droid --task RubiksCubeTask --scene-variant v0 --rig home_office_floor945`,
+pi05_droid_jointpos, 10 episodes: 10/10 successes (7-16 s), videos on W&B piperx-robolab/biwoi7hu. Caveat on the success
+predicate: the reconstructed bowl's local frame is tilted 112 deg from world up, so RoboLab's open-top containment box is
+rotated with it (still correct for objects resting in the bowl, but the tipped-container check is meaningless and recorded
+object poses are in these tilted frames). Upright, identity-aligned local frames at export would fix that.
+
 Why not put it in the scene USD: RoboLab scrapes scene USDs into per-object asset cfgs (lights are dropped) and clones
 the scene per env, so a dome inside the scene would be lost or stacked N times. Global prims must be spawned once at
 /World, which is what the rig cfg does. The ground height is authored for the RoboLab table scenes (z = -0.697); a scene
