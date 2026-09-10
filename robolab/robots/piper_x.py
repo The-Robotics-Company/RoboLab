@@ -35,9 +35,21 @@ from robolab.robots.droid import BinaryJointPositionZeroToOneActionCfg
 # ----------------------------------------------------------------------------- joints / links
 ARM_JOINT_NAMES = [f"joint{i}" for i in range(1, 7)]
 GRIPPER_JOINT_NAMES = ["gripper_joint1", "gripper_joint2"]  # prismatic, joint2 = -joint1 on the real arm
-GRIPPER_OPEN = 0.035   # m per finger (70 mm jaw gap): matches the real arm profile and the piperx_rubiks_cube_bowl
-                       # training data (gripper 0.70 x 0.05 m). Was 0.025 (cuRobo lock_joints target), which left a
-                       # 50 mm gap -- narrower than RoboLab's 58 mm rubiks_cube. USD/MJCF joint range is 0..0.05.
+# m PER FINGER. Both fingers move symmetrically (joint2 = -joint1), so the JAW GAP IS TWICE this value
+# -- AgileX's own convention (piper_ros: "the range of joint7 in RViz is [0, 0.04], but the actual gripper
+# range is 0.08m"). Measured on the asset: the finger pads touch at joint 0 (gap 0.0 mm) and each finger
+# travels 0..0.05 m along the gripper's opening axis, so the jaw spans 0..100 mm, confirmed against the
+# real arm (~10 cm fully open). NOT a 70 mm maximum: 0.035 is a chosen open command using 70 of the
+# 100 mm, matching the piperx_rubiks_cube_bowl training data (gripper 0.70 x 0.05 m). Was 0.025 (cuRobo
+# lock_joints target) = a 50 mm jaw, narrower than RoboLab's 58 mm rubiks_cube. Stock PiPER spec sheets
+# quote a 70 mm maximum and AgileX's ROS package implies 80 mm; this arm and its URDF give 100 mm.
+GRIPPER_OPEN = float(os.environ.get("PIPERX_GRIPPER_OPEN", "0.035"))
+# The gripper_pos OBSERVATION normaliser is pinned separately, and by default to the value the training
+# data was recorded with. Widening GRIPPER_OPEN for a grasp-tolerance experiment then leaves the proprio
+# input inside its training range: fully open gives 1 - 0.048/0.035 < 0, which ObsTerm clips to 0 -- the
+# same value the demonstrations record when open -- and holding the 56.8 mm cube still reads
+# 1 - 0.0284/0.035 = 0.19, exactly as trained. Set PIPERX_GRIPPER_OBS_SCALE to override.
+GRIPPER_OBS_SCALE = float(os.environ.get("PIPERX_GRIPPER_OBS_SCALE", "0.035"))
 GRIPPER_CLOSE = 0.0    # m per finger: fully closed; the 40 N drive limit stalls on the object
 GRIPPER_JOINT_COMMANDS_OPEN = {"gripper_joint1": GRIPPER_OPEN, "gripper_joint2": -GRIPPER_OPEN}
 GRIPPER_JOINT_COMMANDS_CLOSE = {"gripper_joint1": GRIPPER_CLOSE, "gripper_joint2": -GRIPPER_CLOSE}
@@ -177,11 +189,11 @@ def arm_joint_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntit
 
 
 def gripper_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
-    """0 = open (finger at GRIPPER_OPEN), 1 = closed, same polarity as the gripper action."""
+    """0 = open (finger at GRIPPER_OBS_SCALE), 1 = closed, same polarity as the gripper action."""
     robot = env.scene[asset_cfg.name]
     index = robot.data.joint_names.index("gripper_joint1")
     opening = _to_torch(robot.data.joint_pos)[:, index : index + 1]
-    return 1.0 - opening / GRIPPER_OPEN
+    return 1.0 - opening / GRIPPER_OBS_SCALE
 
 
 def _frame_pos(env: ManagerBasedRLEnv, frames_name: str, frame: str):

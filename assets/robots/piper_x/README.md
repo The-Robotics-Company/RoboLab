@@ -18,6 +18,12 @@ articulation root on `/piper_x/root_joint`. Revolute limits are stored in degree
 Nominal setup (from trc-spaces `assets/piper_x/piper_x.xml` and `asset_library/cubes_in_cup_scene.xml`):
 - base_link at the env origin, identity orientation, mounted on the table-top plane z = 0
 - home joint pose: joint1..6 = [0, 1.2, -1.2, 0, 0, 0] rad; gripper_joint1 = +0.035 m, gripper_joint2 = -0.035 m (open; RoboLab cfg GRIPPER_OPEN, changed from 0.025 on 2026-09-08 so the 58 mm rubiks_cube fits)
+- gripper geometry (measured on this asset): both prismatic fingers travel 0..0.05 m in opposite directions along the
+  gripper's opening axis and their pads touch at joint 0, so **the jaw gap is twice the joint value: 0..100 mm**
+  (0.025 -> 50 mm, 0.035 -> 70 mm, 0.05 -> 100 mm). 100 mm matches the real arm measured fully open. This is AgileX's
+  own convention (piper_ros: joint7 range [0, 0.04] in RViz but "the actual gripper range is 0.08m"). Note the stock
+  PiPER spec sheets quote a 70 mm maximum opening and AgileX's ROS package implies 80 mm; this arm's URDF and hardware
+  give 100 mm, so treat the vendor page as a different gripper build.
 - wrist camera (Orbbec DC1) on `gripper_base`: pos (-0.07734, -0.008, 0.04364), quat wxyz (0.190415, 0.680986, -0.680986, -0.190415), fovy 52.5 deg
 - exo camera, world-fixed: pos (1.1717, -0.31, 0.5726), quat wxyz (0.690853, 0.44014, 0.308196, 0.483751); same DC1 intrinsics as the wrist camera (fovy 52.5 deg). NOTE: trc-spaces cubes_in_cup_scene.xml still says fovy 45 for exo_camera
 - render resolution 624x352
