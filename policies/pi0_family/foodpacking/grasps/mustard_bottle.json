@@ -1,0 +1,90 @@
+{
+  "object": "mustard_bottle",
+  "asset": null,
+  "asset_md5": null,
+  "frame": "object",
+  "convention": {
+    "position": "TCP (mid-fingertip) in the object's local frame, metres",
+    "quat": "hand orientation in the object's local frame, (w,x,y,z); hand +Z is the approach axis, pads separate along hand +/-Y"
+  },
+  "authored": {
+    "position": [
+      0.00024999582734764957,
+      0.0638699921452694,
+      -0.04157999881574207
+    ],
+    "quat": [
+      -0.3817965027534833,
+      -0.20888967626293498,
+      -0.4515267671040406,
+      0.7789224044951775
+    ],
+    "close_target": 0.76,
+    "close_stall": 0.46228107810020447,
+    "pre_offset": 0.15,
+    "descend_dz": -0.005
+  },
+  "measured": {
+    "position": [
+      0.0013088158521319855,
+      0.06490229384759343,
+      -0.040959914291556626
+    ],
+    "quat": [
+      -0.3874529115952824,
+      -0.23359522147284476,
+      -0.44211823351853974,
+      0.7744965986961059
+    ],
+    "error_mm": [
+      1.06,
+      1.03,
+      0.62
+    ],
+    "finger_joint": 0.46228107810020447,
+    "object_pose_settled": {
+      "pos": [
+        0.41569527983665466,
+        0.1488163024187088,
+        0.08572298288345337
+      ],
+      "quat": [
+        0.46698492765426636,
+        0.8207522034645081,
+        -0.2808104157447815,
+        -0.1715703308582306
+      ]
+    },
+    "object_pose_at_close": {
+      "pos": [
+        0.41888976097106934,
+        0.15369345247745514,
+        0.08588866144418716
+      ],
+      "quat": [
+        0.46727123856544495,
+        0.827398955821991,
+        -0.26986396312713623,
+        -0.15569816529750824
+      ]
+    },
+    "nudge_mm": [
+      3.19,
+      4.88,
+      0.17
+    ],
+    "tcp_world": [
+      0.42128810519352555,
+      0.15404108706861736,
+      0.16260804533958437
+    ],
+    "note": "after close, before lift"
+  },
+  "provenance": {
+    "scene": "scene_foodpacking",
+    "tcp_body_offset": 0.15,
+    "grip_stiffness": 80.0,
+    "spread_axis": "x",
+    "authored_from": "_GRASP_LOCAL"
+  }
+}

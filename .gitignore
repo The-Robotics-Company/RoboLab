@@ -48,3 +48,6 @@ pyrightconfig.json
 # TRC local scratch
 wandb/
 _inspect/
+
+# rendered rollout videos (large, regenerable)
+videos/
