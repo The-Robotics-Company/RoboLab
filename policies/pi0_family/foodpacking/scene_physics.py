@@ -119,6 +119,8 @@ def add_physics_args(p):
     p.add_argument("--distractor-collider", default="convexHull", choices=["keep", "convexHull", "convexDecomposition", "boundingCube"])
     p.add_argument("--graspable-collider", default="keep", choices=["keep", "convexHull", "convexDecomposition"])
     p.add_argument("--set-mass", nargs="*", default=[], help="name=kg overrides, e.g. small_box=0.3")
+    p.add_argument("--scene", default="opus_gt", choices=sorted(SCENES),
+                   help="which table+objects to load (see SCENES). Train and eval MUST use the same one")
     p.add_argument("--wrist-cam", default="legacy", choices=sorted(WRIST_CAM),
                    help="wrist camera preset (see WRIST_CAM). Train and eval MUST use the same one")
     p.add_argument("--pre-settle", type=int, default=0,
@@ -161,24 +163,51 @@ def reap_zombie_children():
     return n
 
 
-# Bin geometry from mesh vertices (assets/scenes/food_packing_opus_gt.usda), NOT from the
-# delivery's authored extents, which are stale. Per bin: geometric-centre offset from the
-# body root, and INNER XY half-extents (outer minus ~1 cm wall). The old rule "centre
-# within 13 cm of the root" rejected a bottle standing in a corner (~14 cm out) and
-# passed one lying across the rim.
-BIN_XY = {
-    "grey_bin_left":  ((-0.014, -0.012), (0.144, 0.128)),   # outer 0.308 x 0.275, rim z +0.095
-    "grey_bin_right": ((-0.012, +0.002), (0.126, 0.119)),   # outer 0.271 x 0.257, rim z +0.120
+# Scenes this pipeline can run. Same robot, cameras, DR file, physics flags and success test;
+# only the table + objects differ. Train and eval MUST use the same one.
+#  opus_gt: the Robolab delivery reconstruction (what every demo / result so far is on)
+#  gt:      RoboLab's authored food_packing.usda (ycb + vomp assets), prims renamed to the
+#           canonical names -- see assets/scenes/food_packing_gt_canon.usda
+SCENES = {
+    "opus_gt": "food_packing_opus_gt.usda",
+    "gt": "food_packing_gt_canon.usda",
 }
-BIN_Z_MAX = 0.10   # object centre no more than this above the bin root (rim is ~+0.05/+0.06)
+
+# Bin geometry from mesh vertices, NOT from authored extents (the delivery's are stale). Per
+# bin: geometric-centre XY offset from the body root, INNER XY half-extents (outer minus
+# ~1 cm wall) and the rim height above the root. The old rule "centre within 13 cm of the
+# root" rejected a bottle standing in a corner (~14 cm out) and passed one lying across the rim.
+BIN_GEOM = {
+    "opus_gt": {
+        "grey_bin_left":  ((-0.014, -0.012), (0.144, 0.128), 0.10),   # outer 0.308 x 0.275, rim z +0.095
+        "grey_bin_right": ((-0.012, +0.002), (0.126, 0.119), 0.10),   # outer 0.271 x 0.257, rim z +0.120
+    },
+    # vomp bins, mesh vertices x scene scale (0.7 / 1.4), root at the mesh centre, 180 deg about Z.
+    # Both are open-front stacking bins: the low lip faces the robot; rim = full wall height.
+    "gt": {
+        "grey_bin_left":  ((0.0, 0.0), (0.168, 0.095), 0.131),        # bin_a06: outer 0.356 x 0.210, rim +0.131 (lip +0.104)
+        "grey_bin_right": ((0.0, 0.0), (0.152, 0.088), 0.168),        # bin_b03: outer 0.324 x 0.196, rim +0.168 (lip +0.069)
+    },
+}
+BIN_XY = {k: v[:2] for k, v in BIN_GEOM["opus_gt"].items()}
+BIN_Z_MAX = {k: v[2] for k, v in BIN_GEOM["opus_gt"].items()}
+
+
+def select_scene(name):
+    """Point in_bin at `name`'s bin geometry. Call once, right after parsing args."""
+    global BIN_XY, BIN_Z_MAX
+    BIN_XY = {k: v[:2] for k, v in BIN_GEOM[name].items()}
+    BIN_Z_MAX = {k: v[2] for k, v in BIN_GEOM[name].items()}
+    return SCENES[name]
 
 
 def in_bin(obj_xyz, bin_xyz, bin_name):
     """(ok, why): object centre inside the bin's inner footprint and below the rim band.
     Bins are kinematic and axis-aligned in this scene, so a world-axis box test is exact."""
     off, half = BIN_XY[bin_name]
+    zmax = BIN_Z_MAX[bin_name]
     dx = float(obj_xyz[0] - (bin_xyz[0] + off[0]))
     dy = float(obj_xyz[1] - (bin_xyz[1] + off[1]))
     dz = float(obj_xyz[2] - bin_xyz[2])
-    ok = abs(dx) < half[0] and abs(dy) < half[1] and dz < BIN_Z_MAX
-    return ok, f"dx={dx:+.3f}/{half[0]:.3f} dy={dy:+.3f}/{half[1]:.3f} dz={dz:+.3f}/<{BIN_Z_MAX:.2f}"
+    ok = abs(dx) < half[0] and abs(dy) < half[1] and dz < zmax
+    return ok, f"dx={dx:+.3f}/{half[0]:.3f} dy={dy:+.3f}/{half[1]:.3f} dz={dz:+.3f}/<{zmax:.2f}"

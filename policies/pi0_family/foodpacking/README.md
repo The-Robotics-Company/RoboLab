@@ -5,7 +5,7 @@ RoboLab `food_packing_opus_gt` scene, Franka + Robotiq 2F-85 (Nucleus `franka.us
 
 | file | role |
 |---|---|
-| `scene_physics.py` | every physics override (`apply_scene_physics`), the shared CLI flags (`add_physics_args`), the success test (`in_bin`), wrist-camera presets (`WRIST_CAM`) |
+| `scene_physics.py` | every physics override (`apply_scene_physics`), the shared CLI flags (`add_physics_args`), the success test (`in_bin`), wrist-camera presets (`WRIST_CAM`), scene registry + per-scene bin geometry (`SCENES`, `BIN_GEOM`, `select_scene`) |
 | `scene_cfg.py` | the N-env `InteractiveScene` (robot, two cameras, all 9 objects registered) |
 | `gen_demos.py` + `pick_sequence.py` | vectorised RMPflow expert; `--dev` hot-reloads the waypoints |
 | `eval.py` | vectorised policy eval against an openpi websocket server (20 eps ≈ 4 min) |
@@ -28,6 +28,47 @@ python $F/eval.py --episodes 20 --num-envs 20 --obs-format robolab --home-from-d
 
 Train and eval **must** share: physics flags, `--wrist-cam`, render size (320x180), start-pose
 source (`--home-from-demos`), and the DR file.
+
+## Scenes (`--scene`)
+
+| name | file | what |
+|---|---|---|
+| `opus_gt` (default) | `assets/scenes/food_packing_opus_gt.usda` | Robolab delivery-adapter reconstruction; every demo and result before 2026-09-15 is on it |
+| `gt` | `assets/scenes/food_packing_gt_canon.usda` | RoboLab's authored `food_packing.usda` (ycb + vomp assets, Xuning Yang) with prims renamed to the canonical names and the table pinned kinematic. Generated from `food_packing.usda`; poses byte-identical |
+
+Same robot, cameras, DR file, start poses, physics flags and success test; only table + objects
+differ. Train and eval MUST use the same `--scene`. GT assets are git-LFS pointers until
+`git lfs pull --include="assets/objects/ycb/**,assets/objects/vomp/bin_a06/**,assets/objects/vomp/bin_b03/**"`
+(~250 MB); without it the scene loads as a bare table.
+
+GT bin geometry (`BIN_GEOM["gt"]`, from mesh vertices x scene scale): `bin_a06` outer 0.356 x 0.210,
+rim +0.131 (front lip +0.104); `bin_b03` outer 0.324 x 0.196, rim +0.168 (front lip +0.069). Both
+are open-front stacking bins, lip toward the robot, roots at the mesh centre.
+
+Name map opus_gt -> gt source: grey_bin_left=bin_a06, grey_bin_right=bin_b03, cheezit_box=cheez_it,
+soup_can=tomato_soup_can, mustard_bottle=mustard, container=coffee_can, small_box=chocolate_pudding.
+
+### GT eval 2026-09-15 (reconstruction-trained policies on the GT scene)
+
+Smoke test: `eval.py --dry-run --scene gt --num-envs 16 --max-steps 45` -> 16/16 stable, 0 blow-ups.
+Then the two evals below, legacy wrist cam, demos v3 start poses, DR 0-19, 600-step cap:
+
+```bash
+python $F/eval.py --episodes 20 --num-envs 20 --scene gt --obs-format droid   --home-from-demos ~/Desktop/trc/datasets/food_packing_demos_v3 --wrist-cam legacy --video videos/gt_zeroshot.mp4 --out ~/Desktop/trc/eval_gt/zeroshot
+python $F/eval.py --episodes 20 --num-envs 20 --scene gt --obs-format robolab --home-from-demos ~/Desktop/trc/datasets/food_packing_demos_v3 --wrist-cam legacy --video videos/gt_finetune.mp4 --out ~/Desktop/trc/eval_gt/finetune
+```
+
+| policy | scene | full | mustard | spam | blow-ups |
+|---|---|---|---|---|---|
+| zero-shot `pi05_droid_jointpos` | opus_gt | 0/20 | 0 | 0 | 0 |
+| LoRA foodpacking_v2 step 2999 | opus_gt | 5/20 | 12 | 5 | 0 |
+| zero-shot `pi05_droid_jointpos` | gt | 0/20 | 1 | 0 | 0 |
+| LoRA foodpacking_v2 step 2999 | gt | 0/20 | 11 | 0 | 0 |
+
+Comparison video: `videos/compare_grid_final.mp4` (4 columns, sub-scores; built by `make_compare_grid.py`, sources `zs_vec`, `ft_vec`, `gt_zeroshot`, `gt_finetune`).
+Mustard transfers (11 vs 12); spam does not (0 vs 5): the spam is nudged in 7/20 GT episodes
+(displacement 0.08-0.21 m) but never lifted. Videos: `videos/gt_zeroshot*.mp4`, `videos/gt_finetune*.mp4`;
+results: `~/Desktop/trc/eval_gt/{zeroshot,finetune}/results.json`.
 
 ## Physics decisions (all measured, 2026-09-14)
 

@@ -7,7 +7,7 @@ envs together and the server answers N requests per 15-step chunk. The old singl
 """
 import argparse, json, os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scene_physics import apply_scene_physics, add_physics_args, in_bin, reap_zombie_children, ALL_SCENE_OBJS  # noqa: E402
+from scene_physics import apply_scene_physics, add_physics_args, in_bin, reap_zombie_children, select_scene, ALL_SCENE_OBJS  # noqa: E402
 from isaaclab.app import AppLauncher
 
 p = argparse.ArgumentParser()
@@ -32,6 +32,7 @@ add_physics_args(p)
 AppLauncher.add_app_launcher_args(p)
 a, _ = p.parse_known_args()
 a.enable_cameras = True
+select_scene(a.scene)
 app = AppLauncher(a).app
 
 import numpy as np, torch                                          # noqa: E402
@@ -49,7 +50,7 @@ def main():
               else [a.dr_start + i for i in range(a.episodes)])
     N = min(a.num_envs, len(ep_ids))
     sim = SimulationContext(SimulationCfg(dt=1.0 / (HZ * DECIM), device=a.device))
-    scene = build_scene(N, a.env_spacing, a.wrist_cam, IMG_W, IMG_H)
+    scene = build_scene(N, a.env_spacing, a.wrist_cam, IMG_W, IMG_H, a.scene)
     import isaacsim.core.utils.stage as stage_utils                 # noqa: E402
     phys = apply_scene_physics(stage_utils.get_current_stage(), pin_bins=a.pin_bins,
                                pin_distractors=a.pin_distractors, bin_collider=a.bin_collider,
@@ -57,7 +58,7 @@ def main():
                                loop_closure=a.loop_closure, distractor_tune=a.distractor_tune,
                                obj_vel_cap=a.obj_vel_cap, distractor_collider=a.distractor_collider,
                                graspable_collider=a.graspable_collider, set_mass=a.set_mass)
-    print(f"[vec-eval] {N} envs | wrist cam {a.wrist_cam} | {phys}", flush=True)
+    print(f"[vec-eval] {N} envs | scene {a.scene} | wrist cam {a.wrist_cam} | {phys}", flush=True)
     sim.reset()
     for _ in range(a.pre_settle):
         sim.step(render=False)
@@ -240,7 +241,7 @@ def main():
     summary = {"episodes": n, "successes": s, "success_rate": s / n if n else 0.0,
                "per_object": {k: sum(r[f"in_{k}"] for r in results) / n for k in TARGETS},
                "blowups": sum(r["blowup"] for r in results), "prompt": a.prompt, "obs_format": a.obs_format,
-               "wrist_cam": a.wrist_cam, "results": results}
+               "wrist_cam": a.wrist_cam, "scene": a.scene, "results": results}
     with open(os.path.join(a.out, "results.json"), "w") as f:
         json.dump(summary, f, indent=2)
     print(f"\n[vec-eval] SUCCESS RATE {s}/{n} = {100 * s / max(n, 1):.1f}%  per-object {summary['per_object']}  "

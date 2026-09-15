@@ -10,15 +10,15 @@ from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab_assets import FRANKA_ROBOTIQ_GRIPPER_CFG
 
-from scene_physics import ALL_SCENE_OBJS, WRIST_CAM
+from scene_physics import ALL_SCENE_OBJS, WRIST_CAM, SCENES
 
 import os
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-SCENE = os.path.join(REPO, "assets", "scenes", "food_packing_opus_gt.usda")
+SCENE = os.path.join(REPO, "assets", "scenes", SCENES["opus_gt"])   # default; build_scene(scene=...) picks another
 IMG_W, IMG_H = 320, 180          # render size for BOTH demos and eval; pi05 pads to 224x224. Must match or the policy degrades.
 
 
-def make_scene_cfg(wrist_cam="legacy", img_w=IMG_W, img_h=IMG_H):
+def make_scene_cfg(wrist_cam="legacy", img_w=IMG_W, img_h=IMG_H, scene="opus_gt"):
     robot_cfg = FRANKA_ROBOTIQ_GRIPPER_CFG.copy()
     robot_cfg.prim_path = "{ENV_REGEX_NS}/robot"
     robot_cfg.init_state.pos = (0.0, 0.0, 0.0)
@@ -32,7 +32,7 @@ def make_scene_cfg(wrist_cam="legacy", img_w=IMG_W, img_h=IMG_H):
                            spawn=sim_utils.SphereLightCfg(intensity=110000.0, radius=0.06),
                            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.95, 0.10, 1.25)))
         scene_objects = AssetBaseCfg(prim_path="{ENV_REGEX_NS}/SceneObjects",
-                                     spawn=sim_utils.UsdFileCfg(usd_path=SCENE))
+                                     spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(REPO, "assets", "scenes", SCENES[scene])))
         robot = robot_cfg                    # BEFORE the wrist camera: entities spawn in declaration order
         exo = TiledCameraCfg(
             prim_path="{ENV_REGEX_NS}/over_shoulder_left_camera", **cam,
@@ -54,7 +54,7 @@ def make_scene_cfg(wrist_cam="legacy", img_w=IMG_W, img_h=IMG_H):
     return cfg_cls
 
 
-def build_scene(num_envs, env_spacing=14.0, wrist_cam="legacy", img_w=IMG_W, img_h=IMG_H):
+def build_scene(num_envs, env_spacing=14.0, wrist_cam="legacy", img_w=IMG_W, img_h=IMG_H, scene="opus_gt"):
     """One ROW of envs, not the default sqrt(N) grid: the exo camera looks toward +X and in a
     grid it stares at the next env's table. IsaacLab builds the cloner with spacing only, so
     force num_per_row here."""
@@ -62,7 +62,7 @@ def build_scene(num_envs, env_spacing=14.0, wrist_cam="legacy", img_w=IMG_W, img
     _init = _GC.__init__
     _GC.__init__ = lambda self, spacing, num_per_row=-1, stage=None: _init(self, spacing, num_per_row=num_envs, stage=stage)
     try:
-        cfg_cls = make_scene_cfg(wrist_cam, img_w, img_h)
+        cfg_cls = make_scene_cfg(wrist_cam, img_w, img_h, scene)
         scene = InteractiveScene(cfg_cls(num_envs=num_envs, env_spacing=env_spacing, replicate_physics=True))
     finally:
         _GC.__init__ = _init

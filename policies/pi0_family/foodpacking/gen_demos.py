@@ -13,7 +13,7 @@
 """
 import argparse, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scene_physics import apply_scene_physics, add_physics_args, ALL_SCENE_OBJS, in_bin, reap_zombie_children, WRIST_CAM  # noqa: E402
+from scene_physics import apply_scene_physics, add_physics_args, ALL_SCENE_OBJS, in_bin, reap_zombie_children, select_scene, WRIST_CAM  # noqa: E402
 from isaaclab.app import AppLauncher
 
 p = argparse.ArgumentParser()
@@ -35,6 +35,7 @@ p.add_argument("--video-fps", type=int, default=15)
 p.add_argument("--prompt", default="put the mustard bottle in the left bin and the spam can in the right bin")
 AppLauncher.add_app_launcher_args(p)
 a, _ = p.parse_known_args()
+select_scene(a.scene)
 a.enable_cameras = True
 app = AppLauncher(a).app
 
@@ -139,7 +140,7 @@ def _reload_seq():
 def main():
     N = a.num_envs
     sim = SimulationContext(SimulationCfg(dt=1.0 / (HZ * DECIM), device=a.device))
-    scene = build_scene(N, a.env_spacing, a.wrist_cam, IMG_W, IMG_H)
+    scene = build_scene(N, a.env_spacing, a.wrist_cam, IMG_W, IMG_H, a.scene)
 
     import isaacsim.core.utils.stage as stage_utils                      # noqa: E402
     import sys as _sys
