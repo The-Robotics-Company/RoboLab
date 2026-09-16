@@ -22,6 +22,7 @@ Same evaluation loop as ``run.py`` (robolab.eval.runner.run_evaluation): HDF5 + 
                           file the inspection stages reference). stock: RoboLab's per-robot lighting/background
                           cfgs instead (droid: SphereLight + --background HDR).
   --rig-ground auto|Z     where the rig's visible ground sits: auto (default) = the task scene's own /GroundPlane z.
+  --droid-gripper stock|loopclosed  droid only: stock mimic-joint gripper, or the physically closed four-bar linkage.
 
 Examples:
   .venv/bin/python policies/pi0_family/run_rollout.py --headless --robot piperx --task RubiksCubeTask \
@@ -53,8 +54,10 @@ parser.add_argument("--robot", choices=ROBOTS, default="piperx",
                     help="Robot to spawn in the task scene (default: piperx).")
 parser.add_argument("--policy", choices=PI0_VARIANTS, default="pi05",
                     help="Pi0-family variant (default: pi05). Selects the client's default open-loop horizon.")
-parser.add_argument("--scene-variant", "--scene_variant", choices=["gt", "v0"], default="gt",
-                    help="gt: the task's RoboLab scene. v0: same scene name with a _v0 suffix (default: gt).")
+parser.add_argument("--scene-variant", "--scene_variant", type=str, default="gt",
+                    help="gt: the task's RoboLab scene. Any other value is a suffix: the scene lookup resolves "
+                         "<name>_<variant>.<ext> instead (v0 = the video reconstruction; any suffix works, e.g. a thin "
+                         "override layer that references the original and changes one property).")
 parser.add_argument("--checkpoint", type=str, default=None,
                     help="openpi checkpoint dir (local or gs://). Starts a policy server for this run.")
 parser.add_argument("--policy-config", "--policy_config", type=str, default=None,
@@ -88,6 +91,11 @@ parser.add_argument("--rig", type=str, default="home_office",
 parser.add_argument("--background", type=str, default="home_office",
                     help="--rig stock only: RoboLab HDR background cfg: home_office, empty_warehouse, billiard_hall, "
                          "brown_photostudio, or none.")
+parser.add_argument("--droid-gripper", "--droid_gripper", choices=["stock", "loopclosed", "loopclosed-runtime"], default="stock",
+                    help="droid only. stock (default): NVlabs' asset, whose Robotiq four-bar loops are cut at the inner "
+                         "knuckles and approximated by mimic joints. loopclosed: the same asset wrapped by "
+                         "assets/robots/franka_robotiq_2f_85_loopclosed.usda, which re-adds the inner_knuckle<->base_link "
+                         "hinge as a maximal-coordinate joint so the linkage is physically closed.")
 parser.add_argument("--rig-ground", "--rig_ground", type=str, default="auto",
                     help="Height of the rig's visible ground plane: 'auto' (default) reads the task scene's authored "
                          "/GroundPlane z, so the visible ground sits on the scene's collider ground; or give a z in metres.")
@@ -193,7 +201,7 @@ def stop_policy_server(proc: subprocess.Popen | None) -> None:
 
 # ----------------------------------------------------------------------------- scene variant (gt | v0)
 def install_scene_variant(variant: str) -> None:
-    """For v0, make every scene lookup resolve ``<name>_v0.<ext>`` instead of ``<name>.<ext>``.
+    """For a non-``gt`` variant, make every scene lookup resolve ``<name>_<variant>.<ext>`` instead of ``<name>.<ext>``.
 
     Task classes call ``import_scene("<name>.usda", ...)`` at class-definition time, and RoboLab executes task
     files fresh at registration, so patching the lookup before registration retargets every selected task.
@@ -204,22 +212,86 @@ def install_scene_variant(variant: str) -> None:
 
     original = scene_utils.find_scene_file
 
-    def find_scene_file_v0(scene_path: str, scene_dir: str, *a, **kw) -> str:
+    suffix = f"_{variant}"
+
+    def find_scene_file_variant(scene_path: str, scene_dir: str, *a, **kw) -> str:
         if os.path.isabs(scene_path):
             return scene_path
         stem, ext = os.path.splitext(scene_path)
-        if stem.endswith("_v0"):
+        if stem.endswith(suffix):
             return original(scene_path, scene_dir, *a, **kw)
-        v0_name = f"{stem}_v0{ext}"
-        resolved = original(v0_name, scene_dir, *a, **kw)
+        name = f"{stem}{suffix}{ext}"
+        resolved = original(name, scene_dir, *a, **kw)
         if not os.path.isfile(resolved):
             raise FileNotFoundError(
-                f"--scene-variant v0: no scene file '{v0_name}' under {scene_dir} for task scene '{scene_path}'."
+                f"--scene-variant {variant}: no scene file '{name}' under {scene_dir} for task scene '{scene_path}'."
             )
-        print(f"\033[96m[RoboLab] scene variant v0: {scene_path} -> {os.path.relpath(resolved, scene_dir)}\033[0m")
+        print(f"\033[96m[RoboLab] scene variant {variant}: {scene_path} -> {os.path.relpath(resolved, scene_dir)}\033[0m")
         return resolved
 
-    scene_utils.find_scene_file = find_scene_file_v0
+    scene_utils.find_scene_file = find_scene_file_variant
+
+
+# ----------------------------------------------------------------------------- runtime loop closure
+def install_runtime_loop_closure() -> None:
+    """Port of TRC droid-real2sim src/robotiq_loop.py: add the inner_knuckle<->base_link hinges to every Robotiq
+    on the LIVE stage after the scene exists, keeping the stock asset's five mimic joints. Applied by wrapping
+    create_env so it runs once the scene is built and before the first reset, matching their call site."""
+    import robolab.eval.runner as _runner
+    from robolab.core.environments import runtime as _rt
+
+    original = _rt.create_env
+
+    def create_env_with_loop(*a, **kw):
+        out = original(*a, **kw)
+        added = _author_loop_joints_on_stage()
+        print(f"\033[96m[RoboLab] droid gripper: runtime loop closure, {added} joints added on the live stage "
+              f"(stock asset, mimic joints kept)\033[0m")
+        return out
+
+    _rt.create_env = create_env_with_loop
+    _runner.create_env = create_env_with_loop
+
+
+def _author_loop_joints_on_stage(pivot_y: float = 0.0127, pivot_z: float = 0.06142) -> int:
+    import omni.usd
+    from pxr import Gf, Usd, UsdGeom, UsdPhysics
+
+    stage = omni.usd.get_context().get_stage()
+    xc = UsdGeom.XformCache(Usd.TimeCode.Default())
+
+    def find_all(name):
+        return [p for p in stage.Traverse()
+                if p.GetName() == name and "Robotiq" in p.GetPath().pathString and "/Joints/" not in p.GetPath().pathString]
+
+    added = 0
+    for base in find_all("base_link"):
+        gripper_root = base.GetParent()
+        joints_scope = gripper_root.GetPath().AppendChild("Joints")
+        T0 = xc.GetLocalToWorldTransform(base)
+        prefix = gripper_root.GetPath().pathString
+        for side, y in (("left", -abs(pivot_y)), ("right", abs(pivot_y))):
+            kn = next((p for p in find_all(f"{side}_inner_knuckle")
+                       if p.GetPath().pathString.startswith(prefix)), None)
+            if kn is None:
+                continue
+            w_base = Gf.Vec3d(0.0, y, pivot_z)
+            w_world = T0.Transform(w_base)
+            local1 = xc.GetLocalToWorldTransform(kn).GetInverse().Transform(w_world)
+            j = UsdPhysics.Joint.Define(stage, joints_scope.AppendChild(f"loop_{side}_inner"))
+            j.CreateBody0Rel().SetTargets([base.GetPath()])
+            j.CreateBody1Rel().SetTargets([kn.GetPath()])
+            j.CreateLocalPos0Attr(Gf.Vec3f(w_base))
+            j.CreateLocalPos1Attr(Gf.Vec3f(local1))
+            j.CreateLocalRot0Attr(Gf.Quatf(1, 0, 0, 0))
+            j.CreateLocalRot1Attr(Gf.Quatf(1, 0, 0, 0))
+            j.CreateExcludeFromArticulationAttr(True)
+            for ax in ("transX", "transY", "transZ"):
+                lim = UsdPhysics.LimitAPI.Apply(j.GetPrim(), ax)
+                lim.CreateLowAttr(1.0)
+                lim.CreateHighAttr(-1.0)
+            added += 1
+    return added
 
 
 # ----------------------------------------------------------------------------- rig ground height
@@ -277,6 +349,41 @@ def register_robot_envs(args: argparse.Namespace) -> None:
                      background_cfg=resolve_background(args.background))
     else:
         from robolab.registrations.droid.auto_env_registrations_jointpos import auto_register_droid_envs
+
+        if args.droid_gripper == "loopclosed-runtime":
+            # droid-real2sim's approach verbatim: the STOCK asset (all five mimic joints kept) plus the loop
+            # hinges authored on the LIVE stage after the scene is built, rather than in USD before spawn.
+            install_runtime_loop_closure()
+        elif args.droid_gripper == "loopclosed":
+            # Swap the robot USD on the stock DroidCfg (upstream file untouched); everything else is unchanged.
+            import os as _os
+
+            from robolab.constants import ROBOTS_DIR
+            from robolab.robots.droid import DroidCfg
+
+            usd = _os.path.join(ROBOTS_DIR, "franka_robotiq_2f_85_loopclosed.usda")
+            if not _os.path.isfile(usd):
+                parser.error(f"--droid-gripper loopclosed: {usd} not found")
+            # DroidCfg is an IsaacLab configclass: `robot` is a dataclass field whose default the factory
+            # builds per instance, not a plain class attribute. Wrap that factory so every instance gets the
+            # loop-closed USD; robolab/robots/droid.py itself is left untouched.
+            import dataclasses as _dc
+
+            field = DroidCfg.__dataclass_fields__["robot"]
+            if field.default_factory is not _dc.MISSING:
+                _orig = field.default_factory
+
+                def _loopclosed_robot(_orig=_orig, _usd=usd):
+                    cfg = _orig()
+                    cfg.spawn.usd_path = _usd
+                    return cfg
+
+                field.default_factory = _loopclosed_robot
+            elif field.default is not _dc.MISSING:
+                field.default.spawn.usd_path = usd
+            else:
+                parser.error("--droid-gripper loopclosed: could not patch DroidCfg.robot")
+            print(f"\033[96m[RoboLab] droid gripper: loop-closed asset {usd}\033[0m")
 
         kwargs = dict(task_dirs=args.task_dirs, task=args.task, randomize_background=args.randomize_background,
                       background_seed=args.background_seed)
@@ -381,7 +488,8 @@ def main() -> None:
     # The rig is named only when it departs from the default, so existing folder names stay stable.
     rig_name = os.path.splitext(os.path.basename(args_cli.rig))[0] if args_cli.rig else "stock"
     rig_tag = "" if rig_name == "home_office" else f"_rig-{rig_name}"
-    label = f"{args_cli.policy}_{args_cli.robot}_{space}_{args_cli.scene_variant}{rig_tag}_{ckpt_tag}"
+    grip_tag = f"_{args_cli.droid_gripper}" if (args_cli.robot == "droid" and args_cli.droid_gripper != "stock") else ""
+    label = f"{args_cli.policy}_{args_cli.robot}_{space}_{args_cli.scene_variant}{rig_tag}{grip_tag}_{ckpt_tag}"
     run_evaluation(args_cli, policy=label, client_factory=make_client)
     simulation_app.close()
 

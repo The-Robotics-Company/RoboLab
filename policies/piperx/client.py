@@ -9,7 +9,10 @@ Gripper: the cuRobo-generated training data commands ~0.18 while approaching, ~0
 closing, so DROID's 0.5 threshold would never close. Default: close above 0.22, reopen below 0.10 (hysteresis per env).
 """
 
+import atexit
+import json
 import logging
+import os
 
 import numpy as np
 from openpi_client import image_tools, websocket_client_policy
@@ -17,6 +20,11 @@ from openpi_client import image_tools, websocket_client_policy
 from robolab.eval.base_client import InferenceClient
 
 logger = logging.getLogger(__name__)
+
+# Opt-in raw-gripper recorder (off unless PIPERX_GRIPPER_LOG is set), appended one JSON line per chunk.
+_GRIPPER_LOG = open(os.environ["PIPERX_GRIPPER_LOG"], "a") if os.environ.get("PIPERX_GRIPPER_LOG") else None
+if _GRIPPER_LOG is not None:
+    atexit.register(_GRIPPER_LOG.close)
 
 
 class PiperXOpenpiClient(InferenceClient):
@@ -107,14 +115,22 @@ class PiperXOpenpiClient(InferenceClient):
         """Binarise the continuous gripper with hysteresis, walking through the chunk in time order."""
         chunk = chunk.copy()
         closed = self._gripper_closed.get(self._current_env, False)
+        raw = []
         for t in range(chunk.shape[0]):
             g = float(chunk[t, -1])
+            raw.append(g)
             if closed and g < self.gripper_open_below:
                 closed = False
             elif not closed and g > self.gripper_close_above:
                 closed = True
             chunk[t, -1] = 1.0 if closed else 0.0
         self._gripper_closed[self._current_env] = closed
+        # The raw gripper prediction is only visible here, before binarisation. Set PIPERX_GRIPPER_LOG to
+        # record it: the margin between it and gripper_close_above is what decides a premature grasp.
+        if _GRIPPER_LOG is not None:
+            _GRIPPER_LOG.write(json.dumps({"env": int(self._current_env), "closed_after": bool(closed),
+                                           "raw": [round(v, 5) for v in raw]}) + "\n")
+            _GRIPPER_LOG.flush()
         return chunk
 
     def _build_visualization(self, extracted_obs: dict) -> np.ndarray:
@@ -148,3 +164,48 @@ if __name__ == "__main__":
     for _ in range(16):
         out = client.infer(fake_obs, "put the rubiks cube in the bowl", env_id=0)
     print("action", np.round(out["action"], 3), f"| 16 steps in {time.time() - t0:.1f}s")
+
+
+class PiperXDroidBaselineClient(PiperXOpenpiClient):
+    """Drive the Piper X with the UN-fine-tuned pi05_droid_jointpos checkpoint (the RoboLab DROID policy).
+
+    A control, to show what the off-the-shelf DROID policy does on a robot it was never trained on. The
+    checkpoint speaks the Franka's 7 arm joints, the Piper has 6, so the dimensions are adapted:
+      observation/joint_position  6 -> 7   (a zero appended for the Franka's extra joint)
+      actions                     8 -> 7   (first 6 joint targets kept, plus the gripper)
+    Its DROID norm stats are Franka joint ranges, so the Piper's joint values normalise to something the
+    checkpoint never saw. That is the point of the control, not a bug to fix.
+
+    Gripper: DROID's convention is already 0 = open .. 1 = closed (robolab/robots/droid.py gripper_pos), the
+    same as the Piper config, so no polarity flip -- only DROID's standard 0.5 binarisation.
+    """
+
+    N_FRANKA_JOINTS = 7
+    N_PIPER_JOINTS = 6
+
+    def _pack_request(self, extracted_obs: dict, instruction: str) -> dict:
+        # DROID's own key names (openpi.policies.droid_policy.DroidInputs), not the RoboLab ones.
+        jp = np.asarray(extracted_obs["joint_position"], dtype=np.float32).reshape(-1)
+        pad = self.N_FRANKA_JOINTS - jp.shape[0]
+        if pad > 0:
+            jp = np.concatenate([jp, np.zeros(pad, dtype=np.float32)])
+        return {
+            "observation/exterior_image_1_left": image_tools.resize_with_pad(extracted_obs["exo"], 224, 224),
+            "observation/wrist_image_left": image_tools.resize_with_pad(extracted_obs["wrist"], 224, 224),
+            "observation/joint_position": jp[: self.N_FRANKA_JOINTS],
+            "observation/gripper_position": np.atleast_1d(
+                np.asarray(extracted_obs["gripper_position"], dtype=np.float32)
+            ),
+            "prompt": self.prompt_override or instruction,
+        }
+
+    def _unpack_response(self, response: dict) -> np.ndarray:
+        a = np.asarray(response["actions"], dtype=np.float32)
+        # (horizon, 8) Franka -> (horizon, 7) Piper: drop the 7th joint column, keep the gripper.
+        return np.concatenate([a[:, : self.N_PIPER_JOINTS], a[:, -1:]], axis=-1)
+
+    def _postprocess_chunk(self, chunk: np.ndarray) -> np.ndarray:
+        # DROID's own execution rule: hard threshold at 0.5, no hysteresis.
+        chunk = chunk.copy()
+        chunk[..., -1] = (chunk[..., -1] > 0.5).astype(chunk.dtype)
+        return chunk
