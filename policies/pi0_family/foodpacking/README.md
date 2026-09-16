@@ -14,6 +14,13 @@ RoboLab `food_packing_opus_gt` scene, Franka + Robotiq 2F-85 (Nucleus `franka.us
 | `probe_wrist_cam.py` | renders candidate wrist-camera poses in one Isaac boot |
 | `grasps/` | object-frame grasps recorded with `trc-rollout examples/food_packing_pick.py --record-grasp` |
 
+
+The RoboLab task class (`FoodPackingTask`, used by `examples/run_food_packing.py` and `--task FoodPackingTask` in
+the pi0_family runners) lives in `robolab/tasks/trc/food_packing.py`, NOT in `robolab/tasks/benchmark/`: the
+`trc` folder is outside `DEFAULT_TASK_SUBFOLDERS`, so nothing here is registered or validated by default. Opt in with
+`--task food_packing.py` (a file name is searched under all of `robolab/tasks/`; a bare class name only searches
+`benchmark/`), or `--task-dirs trc` for discovery-based registration.
+
 ## Run
 
 ```bash

@@ -24,7 +24,9 @@ import cv2  # noqa: F401  must be imported before isaaclab
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--task", type=str, default="FoodPackingTask")
+parser.add_argument("--task", type=str, default="food_packing.py",
+                    help="task FILE name (searched under robolab/tasks/). A bare class name is only searched in the "
+                         "default benchmark folder, and FoodPackingTask deliberately lives outside it.")
 parser.add_argument("--num-steps", type=int, default=0, help="physics steps to run before holding")
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -48,6 +50,9 @@ robolab.constants.RECORD_IMAGE_DATA = False
 
 def register_franka_env(task: str) -> str:
     """Register ``task`` against the Franka, mirroring auto_register_example_envs_franka."""
+    # FoodPackingTask lives in robolab/tasks/trc/, outside DEFAULT_TASK_SUBFOLDERS, so it is never swept into the
+    # default benchmark registration or tests/test_tasks_valid.py. It is resolved here by FILE name (case 2 of
+    # resolve_task_path, which searches all of robolab/tasks/); a bare class name would only search benchmark/.
     from robolab.robots.franka import FrankaCfg, FrankaJointPositionActionCfg, contact_gripper
 
     camera_cfgs = [EgocentricWideAngleCameraCfg]
@@ -57,7 +62,7 @@ def register_franka_env(task: str) -> str:
     auto_discover_and_create_cfgs(
         task_dir=TASK_DIR,
         tasks=task,
-        add_tags=["benchmark"],
+        add_tags=["trc"],
         env_prefix="",
         env_postfix="FrankaJointPosition",
         observations_cfg=ObservationCfg(),
