@@ -17,6 +17,11 @@ Same evaluation loop as ``run.py`` (robolab.eval.runner.run_evaluation): HDF5 + 
   --policy-config NAME    openpi training-config name of the checkpoint (default for droid: pi05_droid_jointpos;
                           required for piperx when --checkpoint is given).
   --action-space abs|delta  piperx only: absolute joint targets or per-step deltas (droid is joint-position).
+  --rig NAME|PATH|stock   Scene rig USD spawned once at /World for either robot: the HDR dome (light + backdrop)
+                          and the visible ground, from stages/rigs/<NAME>.usda (default home_office, the same
+                          file the inspection stages reference). stock: RoboLab's per-robot lighting/background
+                          cfgs instead (droid: SphereLight + --background HDR).
+  --rig-ground auto|Z     where the rig's visible ground sits: auto (default) = the task scene's own /GroundPlane z.
 
 Examples:
   .venv/bin/python policies/pi0_family/run_rollout.py --headless --robot piperx --task RubiksCubeTask \
@@ -55,8 +60,8 @@ parser.add_argument("--checkpoint", type=str, default=None,
 parser.add_argument("--policy-config", "--policy_config", type=str, default=None,
                     help="openpi config name the checkpoint was trained with "
                          "(default: pi05_droid_jointpos for --robot droid; required for piperx with --checkpoint).")
-parser.add_argument("--openpi-dir", "--openpi_dir", type=str, default=os.path.expanduser("~/git/openpi"),
-                    help="openpi checkout used to start the server (default: ~/git/openpi).")
+parser.add_argument("--openpi-dir", "--openpi_dir", type=str, default=os.path.expanduser("~/git/trc-policy-lab/openpi"),
+                    help="openpi checkout used to start the server (default: ~/git/trc-policy-lab/openpi).")
 parser.add_argument("--server-startup-timeout", type=float, default=1800.0,
                     help="Seconds to wait for the policy server port (default: 1800; big checkpoints load slowly).")
 parser.add_argument("--server-mem-fraction", type=str, default="0.5",
@@ -76,9 +81,16 @@ parser.add_argument("--enable-verbose", "--enable_verbose", action="store_true")
 parser.add_argument("--enable-debug", "--enable_debug", action="store_true")
 parser.add_argument("--record-image-data", "--record_image_data", action="store_true",
                     help="Also record camera images into the HDF5 (default: proprio only).")
-parser.add_argument("--background", type=str, default="none",
-                    help="piperx only: none (default; untextured dome from the render_utils lighting preset) or a RoboLab "
-                         "HDR background: home_office, empty_warehouse, billiard_hall, brown_photostudio.")
+parser.add_argument("--rig", type=str, default="home_office",
+                    help="Scene rig USD (stages/rigs/<name>.usda, or a path) spawned once at /World: HDR dome as light + "
+                         "backdrop and the visible ground, identical to the inspection stages. Default home_office. "
+                         "'stock' = RoboLab's per-robot lighting/background cfgs instead.")
+parser.add_argument("--background", type=str, default="home_office",
+                    help="--rig stock only: RoboLab HDR background cfg: home_office, empty_warehouse, billiard_hall, "
+                         "brown_photostudio, or none.")
+parser.add_argument("--rig-ground", "--rig_ground", type=str, default="auto",
+                    help="Height of the rig's visible ground plane: 'auto' (default) reads the task scene's authored "
+                         "/GroundPlane z, so the visible ground sits on the scene's collider ground; or give a z in metres.")
 parser.add_argument("--droid-compat", "--droid_compat", action="store_true",
                     help="piperx only: drive the 6-joint Piper-X with a DROID-trained (7-joint, 8-dim) checkpoint by "
                          "padding the joint state and dropping the 7th joint action. Auto-enabled when --policy-config "
@@ -210,9 +222,47 @@ def install_scene_variant(variant: str) -> None:
     scene_utils.find_scene_file = find_scene_file_v0
 
 
+# ----------------------------------------------------------------------------- rig ground height
+def resolve_rig_ground(args: argparse.Namespace) -> float:
+    """--rig-ground: an explicit z, or 'auto' = the selected task's scene ground (its authored /GroundPlane)."""
+    import json
+
+    from robolab.constants import SCENE_DIR, TASK_DIR
+    from robolab.core.scenes import utils as scene_utils
+    from robolab.registrations.rig import DEFAULT_GROUND_Z, scene_ground_z
+
+    if args.rig_ground.lower() != "auto":
+        return float(args.rig_ground)
+    grounds = []
+    try:
+        meta = json.load(open(os.path.join(TASK_DIR, "_metadata", "task_metadata.json")))
+        entries = meta if isinstance(meta, list) else meta.get("tasks", [])
+        by_name = {e["task_name"]: e.get("scene") for e in entries if isinstance(e, dict) and "task_name" in e}
+        for task in args.task or []:
+            scene = by_name.get(task)
+            if scene:
+                grounds.append(round(scene_ground_z(scene_utils.find_scene_file(scene, SCENE_DIR)), 6))
+    except Exception as exc:  # noqa: BLE001
+        print(f"\033[93m[RoboLab] --rig-ground auto failed ({exc}); using {DEFAULT_GROUND_Z}.\033[0m")
+    if not grounds:
+        print(f"\033[93m[RoboLab] --rig-ground auto: no task scene ground found; using {DEFAULT_GROUND_Z}.\033[0m")
+        return DEFAULT_GROUND_Z
+    if len(set(grounds)) > 1:
+        print(f"\033[93m[RoboLab] --rig-ground auto: tasks disagree on ground height {sorted(set(grounds))}; using "
+              f"{grounds[0]}. Pass --rig-ground explicitly or run one task per job.\033[0m")
+    return grounds[0]
+
+
 # ----------------------------------------------------------------------------- robot selection
 def register_robot_envs(args: argparse.Namespace) -> None:
     """Register the selected robot's envs for the selected tasks (call after AppLauncher, before run_evaluation)."""
+    from robolab.registrations.piperx.auto_env_registrations_jointpos import resolve_background
+    from robolab.registrations.rig import rig_cfg, rig_ground_z, rig_usd_path
+
+    stock_rig = (not args.rig) or args.rig.lower() in ("stock", "none")
+    rig = None if stock_rig else rig_cfg(args.rig, ground_z=resolve_rig_ground(args))
+    if rig is not None:
+        print(f"[RoboLab] scene rig: {rig_usd_path(rig)} at ground z={rig_ground_z(rig):.4f} (spawned once at /World/rig)")
     if args.robot == "piperx":
         from robolab.registrations.piperx.auto_env_registrations_jointpos import (
             auto_register_piperx_delta_envs,
@@ -220,16 +270,23 @@ def register_robot_envs(args: argparse.Namespace) -> None:
             resolve_background,
         )
         register = auto_register_piperx_envs if args.action_space == "abs" else auto_register_piperx_delta_envs
-        register(task_dirs=args.task_dirs, task=args.task, background_cfg=resolve_background(args.background))
+        if rig is not None:
+            register(task_dirs=args.task_dirs, task=args.task, lighting_cfg=rig, background_cfg=None)
+        else:   # stock: no rig, RoboLab-style separate cfgs (piperx has no stock light, only the HDR background)
+            register(task_dirs=args.task_dirs, task=args.task, lighting_cfg=None,
+                     background_cfg=resolve_background(args.background))
     else:
         from robolab.registrations.droid.auto_env_registrations_jointpos import auto_register_droid_envs
 
-        auto_register_droid_envs(
-            task_dirs=args.task_dirs,
-            task=args.task,
-            randomize_background=args.randomize_background,
-            background_seed=args.background_seed,
-        )
+        kwargs = dict(task_dirs=args.task_dirs, task=args.task, randomize_background=args.randomize_background,
+                      background_seed=args.background_seed)
+        if rig is not None:
+            if args.randomize_background:
+                parser.error("--randomize-background needs --rig stock (a rig USD carries its own HDR).")
+            kwargs.update(lighting_cfg=rig, background_cfg=None)
+        elif not args.randomize_background:
+            kwargs.update(background_cfg=resolve_background(args.background))
+        auto_register_droid_envs(**kwargs)
 
 
 def warm_up_policy_server(args: argparse.Namespace) -> None:
@@ -321,7 +378,10 @@ def main() -> None:
     # Output folder / env_cfg.policy label carries robot, action space, scene variant and checkpoint for provenance.
     ckpt_tag = os.path.basename(args_cli.checkpoint.rstrip("/")) if args_cli.checkpoint else "server"
     space = args_cli.action_space if args_cli.robot == "piperx" else "jointpos"
-    label = f"{args_cli.policy}_{args_cli.robot}_{space}_{args_cli.scene_variant}_{ckpt_tag}"
+    # The rig is named only when it departs from the default, so existing folder names stay stable.
+    rig_name = os.path.splitext(os.path.basename(args_cli.rig))[0] if args_cli.rig else "stock"
+    rig_tag = "" if rig_name == "home_office" else f"_rig-{rig_name}"
+    label = f"{args_cli.policy}_{args_cli.robot}_{space}_{args_cli.scene_variant}{rig_tag}_{ckpt_tag}"
     run_evaluation(args_cli, policy=label, client_factory=make_client)
     simulation_app.close()
 

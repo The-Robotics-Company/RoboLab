@@ -18,7 +18,7 @@ RENDER_INTERVAL = 8
 
 _DEFAULT = object()   # sentinel: "use the Piper-X default" (None means "none", e.g. no background)
 
-# RoboLab HDR backgrounds selectable by name; "none" keeps the untextured dome of the default lighting.
+# RoboLab HDR backgrounds selectable by name (only used with --rig stock; a rig USD carries its own HDR).
 BACKGROUNDS = {
     "none": None,
     "home_office": "HomeOfficeBackgroundCfg",
@@ -40,17 +40,21 @@ def resolve_background(name: str):
     return getattr(bg, cls)
 
 
-def _register(action_cfg, env_postfix, task_dirs, task, camera_cfg=None, lighting_cfg=_DEFAULT, background_cfg=None):
-    """Default look = colleague's render_utils settings: PiperXRenderLightingCfg, no HDR background."""
+def _register(action_cfg, env_postfix, task_dirs, task, camera_cfg=None, lighting_cfg=_DEFAULT, background_cfg=_DEFAULT):
+    """Default look = the shared rig USD stages/rigs/home_office.usda (HDR dome as the only light + visible ground),
+    spawned once at /World; identical to the inspection-stage previews. Pass lighting_cfg=None, background_cfg=<cfg>
+    for RoboLab-style separate lighting/background cfgs instead."""
     from robolab.core.environments.factory import auto_discover_and_create_cfgs
     from robolab.core.observations.observation_utils import generate_image_obs_from_cameras, generate_obs_cfg
     from robolab.registrations.piperx.camera_presets import PiperXExoCameraCfg
-    from robolab.registrations.piperx.lighting_presets import PiperXRenderLightingCfg
+    from robolab.registrations.rig import DEFAULT_RIG, rig_cfg
     from robolab.robots.piper_x import PiperXCfg, PiperXProprioceptionObservationCfg, PiperXWristCameraCfg, contact_gripper
     from robolab.variations.camera import EgocentricMirroredWideAngleHighCameraCfg
 
     if lighting_cfg is _DEFAULT:
-        lighting_cfg = PiperXRenderLightingCfg
+        lighting_cfg = rig_cfg(DEFAULT_RIG)
+    if background_cfg is _DEFAULT:
+        background_cfg = None   # the rig carries the HDR
     camera_cfg = camera_cfg or [PiperXExoCameraCfg, EgocentricMirroredWideAngleHighCameraCfg]
     ViewportCameraCfg = generate_image_obs_from_cameras([EgocentricMirroredWideAngleHighCameraCfg])
     # Policy images: exo + wrist. The wrist camera is spawned through PiperXCfg; its wrapper here only names the obs.

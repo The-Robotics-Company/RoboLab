@@ -8,7 +8,7 @@ Checks: env builds from PiperXCfg, action dim is 7 (6 arm + gripper), the grippe
 with both fingers mirrored, the arm tracks a small sinusoid around the home pose, and the exo + wrist camera
 observations arrive at 624x352. Writes the viewport video and a three-panel diagnostic video.
 
-  cd ~/git/RoboLab && .venv/bin/python examples/run_piperx_jointpos.py --headless
+  cd ~/git/trc-policy-lab/RoboLab && .venv/bin/python examples/run_piperx_jointpos.py --headless
   PIPERX_WRIST_CAM=calibrated .venv/bin/python examples/run_piperx_jointpos.py --headless   # hand-eye camera pose
 """
 
