@@ -9,7 +9,8 @@ from PIL import Image, ImageDraw, ImageFont
 ap = argparse.ArgumentParser()
 ap.add_argument("--demos", required=True)
 ap.add_argument("--eps", default="20,75,179")
-ap.add_argument("--cell", type=int, default=480)
+ap.add_argument("--cell", type=int, default=640, help="cell width px; source is 320x180, anything above is upscaling")
+ap.add_argument("--wrist", type=int, default=0, help="1 = wrist camera row under the exterior row")
 ap.add_argument("--out", required=True)
 ap.add_argument("--title", default="Self-generated training demos -- RMPflow expert, reconstructed scene, legacy wrist cam")
 A = ap.parse_args()
@@ -25,10 +26,10 @@ T = max(len(d["exterior_image"]) for d in D)
 CW, CH = A.cell, A.cell * 9 // 16
 GAP, PAD, HDR, LBL, FOOT = 12, 14, 64, 26, 46
 W = PAD * 2 + len(eps) * (CW + GAP) - GAP
-H = HDR + LBL + CH + 6 + CH + FOOT + PAD
+H = HDR + LBL + CH + (6 + CH if A.wrist else 0) + FOOT + PAD
 bg = Image.new("RGB", (W, H), (10, 10, 10)); d = ImageDraw.Draw(bg)
 d.text((PAD, 10), A.title, font=F(20, True), fill=WHITE)
-d.text((PAD, 38), f"prompt: \"{str(D[0]['prompt'])}\"   |   top: exterior camera, bottom: wrist camera, both 320x180 as fed to pi0.5 (upscaled)", font=F(14), fill=DIM)
+d.text((PAD, 38), f"prompt: \"{str(D[0]['prompt'])}\"   |   {'top: exterior camera, bottom: wrist camera, both' if A.wrist else 'exterior camera,'} 320x180 as fed to pi0.5 (upscaled)", font=F(14), fill=DIM)
 for i, (e, dd) in enumerate(zip(eps, D)):
     x = PAD + i * (CW + GAP)
     d.text((x, HDR + 4), f"demo ep {e}   {len(dd['exterior_image'])} steps @ 15 Hz", font=F(14), fill=WHITE)
@@ -42,7 +43,8 @@ for t in range(T):
         k = min(t, len(dd["exterior_image"]) - 1)
         x = PAD + i * (CW + GAP); y = HDR + LBL
         img[y:y + CH, x:x + CW] = np.array(Image.fromarray(dd["exterior_image"][k]).resize((CW, CH), Image.BILINEAR))
-        img[y + CH + 6:y + 2 * CH + 6, x:x + CW] = np.array(Image.fromarray(dd["wrist_image"][k]).resize((CW, CH), Image.BILINEAR))
+        if A.wrist:
+            img[y + CH + 6:y + 2 * CH + 6, x:x + CW] = np.array(Image.fromarray(dd["wrist_image"][k]).resize((CW, CH), Image.BILINEAR))
     pil = Image.fromarray(img); dr = ImageDraw.Draw(pil)
     for i, dd in enumerate(D):
         k = min(t, len(dd["exterior_image"]) - 1); x = PAD + i * (CW + GAP)
