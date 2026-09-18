@@ -8,7 +8,7 @@ import av, numpy as np
 from PIL import Image, ImageDraw, ImageFont
 ap = argparse.ArgumentParser()
 ap.add_argument("--demos", required=True)
-ap.add_argument("--eps", default="20,100,179")
+ap.add_argument("--eps", default="20,75,179")
 ap.add_argument("--cell", type=int, default=480)
 ap.add_argument("--out", required=True)
 ap.add_argument("--title", default="Self-generated training demos -- RMPflow expert, reconstructed scene, legacy wrist cam")
@@ -28,10 +28,10 @@ W = PAD * 2 + len(eps) * (CW + GAP) - GAP
 H = HDR + LBL + CH + 6 + CH + FOOT + PAD
 bg = Image.new("RGB", (W, H), (10, 10, 10)); d = ImageDraw.Draw(bg)
 d.text((PAD, 10), A.title, font=F(20, True), fill=WHITE)
-d.text((PAD, 38), "top: exterior camera   bottom: wrist camera   -- both 320x180 as fed to pi0.5 (upscaled here)", font=F(14), fill=DIM)
+d.text((PAD, 38), f"prompt: \"{str(D[0]['prompt'])}\"   |   top: exterior camera, bottom: wrist camera, both 320x180 as fed to pi0.5 (upscaled)", font=F(14), fill=DIM)
 for i, (e, dd) in enumerate(zip(eps, D)):
     x = PAD + i * (CW + GAP)
-    d.text((x, HDR + 4), f"demo ep {e}   {len(dd['exterior_image'])} steps @ 15 Hz   {str(dd['prompt'])[:60]}", font=F(14), fill=WHITE)
+    d.text((x, HDR + 4), f"demo ep {e}   {len(dd['exterior_image'])} steps @ 15 Hz", font=F(14), fill=WHITE)
 d.text((PAD, H - FOOT - PAD + 8), "actions: 15-step absolute joint-position chunks + gripper; DR: mustard + spam XY +/-4 cm per episode; "
        "kept 153 demos, 123 used for the LoRA fine-tune", font=F(14), fill=DIM)
 static = np.array(bg)
