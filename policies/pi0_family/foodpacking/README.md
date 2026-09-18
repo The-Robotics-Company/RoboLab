@@ -72,7 +72,7 @@ python $F/eval.py --episodes 20 --num-envs 20 --scene gt --obs-format robolab --
 | zero-shot `pi05_droid_jointpos` | gt | 0/20 | 1 | 0 | 0 |
 | LoRA foodpacking_v2 step 2999 | gt | 0/20 | 11 | 0 | 0 |
 
-Comparison video: `videos/compare_grid_final.mp4` (4 columns, sub-scores; built by `make_compare_grid.py`, sources `zs_vec`, `ft_vec`, `gt_zeroshot`, `gt_finetune`).
+Comparison video: `videos/compare_grid_final.mp4` (4 columns, sub-scores; built by `make_compare_grid.py`, sources `zs_vec`, `ft_vec`, `gt_zeroshot`, `gt_finetune`; `--eps 4 --cell 480 --panel 0 --out compare_grid_final_ep4.mp4` for the single-row cut).
 Mustard transfers (11 vs 12); spam does not (0 vs 5): the spam is nudged in 7/20 GT episodes
 (displacement 0.08-0.21 m) but never lifted. Videos: `videos/gt_zeroshot*.mp4`, `videos/gt_finetune*.mp4`;
 results: `~/Desktop/trc/eval_gt/{zeroshot,finetune}/results.json`.
