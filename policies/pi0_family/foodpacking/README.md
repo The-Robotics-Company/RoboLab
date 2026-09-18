@@ -12,6 +12,7 @@ RoboLab `food_packing_opus_gt` scene, Franka + Robotiq 2F-85 (Nucleus `franka.us
 | `make_dr_episodes.py` → `dr_episodes.json` | shared DR draws: eval reads 0–19, demos 20+ |
 | `robotiq_loop.py` | Robotiq four-bar loop-closure joints (without them nothing can be grasped) |
 | `probe_wrist_cam.py` | renders candidate wrist-camera poses in one Isaac boot |
+| `make_compare_grid.py`, `make_demo_video.py` | result grid video ({zero-shot, fine-tune} x {recon, GT}) and side-by-side training-demo video from the npz files; openpi venv, no Isaac |
 | `grasps/` | object-frame grasps recorded with `trc-rollout examples/food_packing_pick.py --record-grasp` |
 
 
